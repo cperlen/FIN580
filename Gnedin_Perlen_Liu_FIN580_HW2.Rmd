@@ -26,10 +26,15 @@ set.seed(666)
 Read in data. There might some days the price remains constant. You should check the data and delete those days, since the estimate of volatility will be zero
 ```{r,tidy=TRUE}
 #Get data
+load_data_from_scratch=FALSE
+
 file_names=dir(path="~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/Data")
 setwd("~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/Data")
 
-for(i in 1:length(file_names)){
+period=288 #Only using daily vols for this assignment
+
+if(load_data_from_scratch==TRUE){
+ for(i in 1:length(file_names)){
   temp=read.csv(file_names[i],header = TRUE)
   n=ncol(temp)
   if(i==1){
@@ -38,14 +43,22 @@ for(i in 1:length(file_names)){
   else{
     data=cbind(data,temp[,n])
   }
-}
-
+ } 
+  
 #Change data to log returns
-temp=diff(log(data))
+temp=diff(log(data),lag=period)
 data=data[-1,]
 data=temp
+}
 
-#TBU
+
+#Save data to .RData file 
+if(load_data_from_scratch==FALSE){
+  load("data.RData")
+}
+save(data,file="data.RData")
+
+#TBU - potentially remove in model fitting stage and ignore here
 remove_constants=function(time_series){
   new_series=time_series
   for(i in 1:length(time_series)){
@@ -58,7 +71,7 @@ remove_constants=function(time_series){
 
 Get volatilities, annualize, and take the log. Fix windows.
 ```{r,tidy=TRUE}
-period=288 #Only using daily vols for this assignment
+
 lookback_lasso=100 #Almost half a year - per assignment recomendation 
 get_vol=function(time_series,start_i,end_i){
   use_data=time_series[start_i:end_i,]
@@ -75,20 +88,22 @@ vols=log(vols)
 
 Here we split our data into training and test. Since we use VAR models we will split our data sequentially. We will aim to use 2/3 of the data for the training set, and 1/3 for the testing.
 ```{r,tidy=TRUE}
-split=floor(nrow(vols)*(2/3))
+split=floor(nrow(vols)*(3.5/(5)))
 train=vols[1:split,]
 test=vols[(split+1):nrow(vols),]
 ```
 
 LASSO described in [1]. You should also use log volatility instead of volatility to address the negativity problem in regression. Compare the two results. You should divide your data into training and test sample, so that you can find the optimized in training set and use it for the test sample.
 ```{r,tidy=TRUE}
+ps=c(1,2,3)
 lam_1=0
+p_lass=c() #List of lasso predictions
 #Get lam_L
-cv=cv.glemnet(x,y)
+cv=cv.glemnet(train,train) #TBU
 lam_L=cv$lambda[1] #Lambda L is an estimate of the sparsity parameter that shrinks all parameters to 0
 lasso_prediction=function(lam,lookback,index,time_series){
-  x_data=time_series[index-lookback-1:index-1]
-  y_data=time_series[index-lookback:index]
+  x_data=time_series[1:index-1]
+  y_data=time_series[1:index-1]
 }
 
 ```
@@ -103,7 +118,7 @@ $x_t$ = t, you can use the KNN regression we’ve covered in class (details can 
 ```{r,tidy=TRUE}
 ks=c(1,3,5,10,20)
 lookback_knn=period*252*2 #Two years
-accuracy_knn=c()
+p_lass=c() #List of knn predictions
 knn_prediction=function(i,k){
   train_ts=train[i-lookback_knn-1:i-1]
   train_labels=train[i-lookback_knn:i]
