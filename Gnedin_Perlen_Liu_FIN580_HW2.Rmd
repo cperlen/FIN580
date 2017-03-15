@@ -17,6 +17,7 @@ library(miscTools)
 library(Metrics)
 library(knitr)
 library(class)
+library(BigVAR)
 library(BioPhysConnectoR)
 #Set seed
 set.seed(666)
@@ -26,10 +27,10 @@ set.seed(666)
 Read in data. There might some days the price remains constant. You should check the data and delete those days, since the estimate of volatility will be zero
 ```{r,tidy=TRUE}
 #Get data
-load_data_from_scratch=FALSE
+load_data_from_scratch=TRUE
 
-file_names=dir(path="~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/Data")
-setwd("~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/Data")
+file_names=dir(path="~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/FIN580")
+setwd("~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/FIN580")
 
 period=288 #Only using daily vols for this assignment
 
@@ -71,15 +72,13 @@ remove_constants=function(time_series){
 
 Get volatilities, annualize, and take the log. Fix windows.
 ```{r,tidy=TRUE}
-
-lookback_lasso=100 #Almost half a year - per assignment recomendation 
 get_vol=function(time_series,start_i,end_i){
   use_data=time_series[start_i:end_i,]
   sds=apply(use_data,2,sd)*sqrt(period*252)
   return(sds)
 }
 vols=data.frame(matrix(NA,ncol = ncol(data),nrow=nrow(data)/period))
-vols=sapply(seq(1,nrow(data),period),function(x) {get_vol(data,x,x+288)})
+vols=sapply(seq(1,nrow(data)-period,period),function(x) {get_vol(data,x,x+288)})
 #Transpose to keep columns and currencies
 vols=t(vols)
 #Change to log vols
@@ -96,8 +95,17 @@ test=vols[(split+1):nrow(vols),]
 LASSO described in [1]. You should also use log volatility instead of volatility to address the negativity problem in regression. Compare the two results. You should divide your data into training and test sample, so that you can find the optimized in training set and use it for the test sample.
 ```{r,tidy=TRUE}
 ps=c(1,2,3)
-lam_1=0
+#Fits lasso based 
+#Resource http://www.wbnicholson.com/BigVAR.html
+#struct=none is lasso penalty
+test=constructModel(train[,1],p=1,verbose = FALSE,IC = FALSE,ownlambdas = TRUE)
+lasso_fit=function(p){
+  
+}
+train_x_lasso=train[]
 p_lass=c() #List of lasso predictions
+#Getting range of lambdas
+lam_1=0
 #Get lam_L
 cv=cv.glemnet(train,train) #TBU
 lam_L=cv$lambda[1] #Lambda L is an estimate of the sparsity parameter that shrinks all parameters to 0
