@@ -17,11 +17,12 @@ library(miscTools)
 library(Metrics)
 library(knitr)
 library(class)
+library(vars)
 library(BigVAR)
 library(orderedLasso)
 library(BioPhysConnectoR)
 #Set seed
-set.seed(666)
+set.seed(1560)
 
 ```
 
@@ -61,15 +62,6 @@ if(load_data_from_scratch==FALSE){
 }
 save(data,file="data.RData")
 
-#TBU - potentially remove in model fitting stage and ignore here
-remove_constants=function(time_series){
-  new_series=time_series
-  for(i in 1:length(time_series)){
-    if(new_series[i+1]==new_series[i]){
-      
-    }
-  }
-}
 ```
 
 Get volatilities, annualize, and take the log. Fix windows.
@@ -86,6 +78,7 @@ vols=sapply(seq(1,nrow(data)-period,period),function(x) {get_vol(data,x,x+288)})
 vols=t(vols)
 #Change to log vols
 vols=log(vols)
+
 
 save(vols,file="vols.RData")
 ```
@@ -133,34 +126,69 @@ VAR model.
 ```{r,tidy=TRUE}
 ps=c(1,2,3)
 fit_VAR=function(p){
-  model=constructModel(train,p,"Basic",gran=c(50,10))
+  model=constructModel(train,p,"Basic",gran=c()
   pred_train=predict(model,train)
   pred_test=predict(mode,test)
   return(list(mse(pred_train,train),mse(pred_test,test)))
 }
 
 ```
-LASSO described in [1].  You are expected to run one regression with the whole training history ( rst 3.5 years) for each λ. Run the regressions with di erent λs and plot the  in sample  Mean Square Error (MSE) with respect to the λ. Use the best λ (corresponds to the lowest MSE) in the test sample to report the  nal evaluation numbers.
+LASSO described in [1].  You are expected to run one regression with the whole training history ( rst 3.5 years) for each λ. Run the regressions with different λs and plot the  in sample  Mean Square Error (MSE) with respect to the λ. Use the best λ (corresponds to the lowest MSE) in the test sample to report the  nal evaluation numbers.
 ```{r,tidy=TRUE}
 #Available lags
 ps=c(1,2,3)
-#Getting range of lambdas
-lam_1=0
-#Get lam_L - maximum lambda, shrinks all parameters to 0 - based on most complex model (p=3)
-currs=seq(1,ncol(train),1)
-get_max_L=function(col_i){
-  ts=train[,col_i]
-  ts=ts[which(ts!=0)]
-  y=matrix(ts[(max_lag+1):length(ts)])
-  x=get_lagged_data(ts,3)
-  cv=cv.glmnet(x,y)
-  return(cv$lambda[1])
-}
-max_L=sapply(currs,get_max_L)
-lam_L=max(max_L)
-lams=seq(0,lam_L,length.out = 10)
 
-#Fits lasso based 
+#VAR lasso
+lams_opt_VAR_l=c()
+fit_VAR_lasso=function(p){
+  model=constructModel(data.matrix(train),p=p,"Basic",gran=c(50,10),h=1)
+  res=cv.BigVAR(model)
+  o_lam=res@OptimalLambda
+  mse_in=res@InSampMSFE
+  name=paste("VAR Lasso Results Lag",p)
+  #Plot and save as pdf
+  plot(res)
+  title(main = name)
+  #Save as pdf 
+  dev.copy(pdf,paste(name,".pdf",sep=""))
+  dev.off()
+  return(list(o_lam,mse_in))
+}
+
+for(i in 1:length(ps)){
+  temp=fit_VAR_lasso(i)
+  lams_opt_VAR_l=append(lams_opt_VAR_l,temp[[1]])
+}
+
+#Expanding window fits of VAR lasso models using the optimal lambda to get 1 step predictions
+#Prediction function - returns MSE for 1 prediction over all currencies
+pred_var_lasso=function(data,lam,p,ans){
+  model=constructModel(data.matrix(data),p=p,"Basic",ownlambdas=TRUE,gran=lam,h=1)
+  res=cv.BigVAR(model)
+  pred=t(predict(res,1))
+  return(mean((matrix(ans,nrow=1)-pred)^2))
+}
+
+temp=seq(1,nrow(test)-2,1)
+mses_var_lasso=data.frame(matrix(NA,nrow=(length(temp)+1),ncol=3))
+
+for(i in 1:length(ps)){
+  lam=lams_opt_VAR_l[i]
+  mses_var_lasso[1,i]=pred_var_lasso(train,lam,i,test[1,])
+  mses_var_lasso[2:nrow(mses_var_lasso),i]=sapply(temp,function(x){pred_var_lasso(rbind(train,test[1:(x),]),lam,i,test[x+1,])})
+}
+
+
+
+
+
+```
+
+$\textbf{Ordered lasso implementation}$
+Here we fit the ordered LASSO for extra credit. 
+```{r,tidy=TRUE}
+
+#Fits lasso based on lag 
 #Can also do ordered lasso based on order parameter
 fit_lasso=function(col_i,max_lag,lam,order){
   ts=train[,col_i]
@@ -176,42 +204,56 @@ fit_lasso=function(col_i,max_lag,lam,order){
   pred_test=predict(model,new_x)$yhat
   return(list(mse(pred_train,y),mse(pred_test,new_y)))
 }
-#Mses is a list - train first, test second
-mse_train=matrix(NA,ncol=ncol(vols),nrow=length(lams))
-mse_test=matrix(NA,ncol=ncol(vols),nrow=length(lams))
 
+#Getting range of lambdas
+lam_1=0
+#Get lam_L - maximum lambda, shrinks all parameters to 0 - based on most complex model (p=3)
+currs=seq(1,ncol(train),1)
+max_lag=max(ps)
+get_max_L=function(col_i){
+  ts=train[,col_i]
+  ts=ts[which(ts!=0)]
+  y=matrix(ts[(max_lag+1):length(ts)])
+  x=get_lagged_data(ts,3)
+  cv=cv.glmnet(x,y)
+  return(cv$lambda[1])
+}
+max_L=sapply(currs,get_max_L)
+lam_L=max(max_L)
+lams=seq(0,lam_L,length.out = 10)
+
+#Mses is a list - train first, test second
 populate_tables=function(p,order){
+  mse_train=matrix(NA,ncol=ncol(vols),nrow=length(lams))
+  mse_test=matrix(NA,ncol=ncol(vols),nrow=length(lams))
   for(i in 1:ncol(mse_train)){
   temp=sapply(lams,function(x) fit_lasso(i,p,x,order))
-  print(unlist(temp[1,]))
   mse_train[,i]=matrix(unlist(temp[1,]),ncol=1)
-  print(mse_train[,i])
   mse_test[,i]=matrix(unlist(temp[2,]),ncol=1)
   }
   return(list(mse_train,mse_test))
 }
 
-#Getting all MSE tables
-populate_tables(1)
-
-for(i in 1:length(ps)){
+#Getting all MSE tables for ordered lasso - note we exclude 1lag as this is not a VAR model
+for(i in 2:length(ps)){
   p=ps[i]
-  name_train=paste("train_",p,sep="")
-  name_test=paste("test_",p,sep="")
-  temp=populate_tables(p,FALSE)
+  name_train=paste("train_ordered_",p,sep="")
+  name_test=paste("test_ordered_",p,sep="")
+  temp=populate_tables(p,TRUE)
   assign(name_train,temp[1])
   assign(name_test,temp[2])
 }
 ```
 
-Plot MSEs by lambda.
+Plot MSEs by lambda for ordered Lasso.
 ```{r,tidy=TRUE}
 #Get average MSEs by lambda (for plotting)
 ave_mse_train=matrix(1,nrow=length(lams),ncol=length(ps))
 ave_mse_test=matrix(1,nrow=length(lams),ncol=length(ps))
+
 for(i in 1:length(ps)){
-  name_train=paste("train_",p,sep="")
-  name_test=paste("test_",p,sep="")
+  name_train=paste("train_ordered_",p,sep="")
+  name_test=paste("test_ordered_",p,sep="")
   use_train=matrix(unlist(get(name_train)),ncol=ncol(vols))
   use_test=matrix(unlist(get(name_test)),ncol=ncol(vols))
   ave_mse_train[,i]=rowMeans(use_train)
@@ -226,18 +268,6 @@ legend("topright",legend=1:3,col=1:3,pch=1)
 
 ```
 
-$\textbf{Extra Points:}$ Ordered lasso implementation.
-```{r,tide=TRUE}
-for(i in 1:length(ps)){
-  p=ps[i]
-  name_train=paste("train_ord_",p,sep="")
-  name_test=paste("test_ord_",p,sep="")
-  temp=populate_tables(p,TRUE)
-  assign(name_train,temp[1])
-  assign(name_test,temp[2])
-}
-
-```
 
 KNN method we’ve covered during class. Features and Labels First, you should use today’s vol t as the 1-dimensional feature space, which means $x_t$ = t. The label is just what you want to forecast, which means $y_t$ = t+1. Note that you can choose different k for KNN, such as k = {1, 3, 5, 10, 20, 50}.
 Training Sample: For each day/week/month, we can either use expanding window, that means use all the data up to that date as training sample to find the k-nearest points, or you can use rolling window, that means, fix the look-back window when training your model, say for each day, you can always lookback
