@@ -203,32 +203,63 @@ pred_var_lasso_det=function(data,lam,p,ans){
   return((matrix(ans,nrow=1)-pred)^2)
 }
 
-
-
-
 #Non detailed
 temp=seq(1,nrow(test)-2,1)
 mses_var_lasso=data.frame(matrix(NA,nrow=(length(temp)+1),ncol=3))
 
 for(i in 1:length(ps)){
-  i=3
   lam=lams_opt_VAR_l[i]
   mses_var_lasso[1,i]=pred_var_lasso(train,lam,i,test[1,])
   mses_var_lasso[2:nrow(mses_var_lasso),i]=sapply(temp,function(x){print(x) 
-    pred_var_lasso(rbind(train,test[1:(x),]),lam,i,test[x+1,])})
+    pred_var_lasso(rbind(train,test[1:(x-1),]),lam,i,test[x+1,])})
 }
 
 save(mses_var_lasso,file="mses_var_lasso.RData")
+load("mses_var_lasso.RData")
+
+#Plot and sae
+plot(colMeans(mses_var_lasso),main="VAR Lasso Model Training MSE by Lag",xlab="Lag",ylab="MSE",pch=24,col=2)
+dev.copy(pdf,"var_lasso_test_mse.pdf")
+dev.off()
 
 #Detailed
-mses_var_lasso_det=data.frame(matrix(NA,nrow=(length(temp)+1),ncol=3*9))
-for(i in 1:length(ps)){
-  lam=lams_opt_VAR_l[i]
-  mses_var_lasso[1,i:(3*i)]=pred_var_lasso(train,lam,i,test[1,])
-  mses_var_lasso[2:nrow(mses_var_lasso),i:(3*i)]=sapply(temp,function(x){print(x) 
-    pred_var_lasso(rbind(train,test[1:(x),]),lam,i,test[x+1,])})
-}
+
+mse_var_lasso_det_data=list()
+
+mses_var_lasso_det_1=data.frame(matrix(NA,nrow=(length(temp)+1),ncol=9))
+mses_var_lasso_det_2=data.frame(matrix(NA,nrow=(length(temp)+1),ncol=9))
+mses_var_lasso_det_3=data.frame(matrix(NA,nrow=(length(temp)+1),ncol=9))
+
+i=1
+lam=lams_opt_VAR_l[i]
+mses_var_lasso_det_1[1,]=pred_var_lasso_det(train,lam,i,test[1,])
+mses_var_lasso_det_1[2:nrow(mses_var_lasso_det),]=sapply(temp,function(x){pred_var_lasso_det(rbind(train,test[1:(x-1),]),lam,i,test[x+1,])})
+i=2
+lam=lams_opt_VAR_l[i]
+mses_var_lasso_det_2[1,]=pred_var_lasso_det(train,lam,i,test[1,])
+mses_var_lasso_det_2[2:nrow(mses_var_lasso_det),]=sapply(temp,function(x){pred_var_lasso_det(rbind(train,test[1:(x-1),]),lam,i,test[x+1,])})
+i=3
+lam=lams_opt_VAR_l[i]
+mses_var_lasso_det_3[1,]=pred_var_lasso_det(train,lam,i,test[1,])
+mses_var_lasso_det_3[2:nrow(mses_var_lasso_det),]=sapply(temp,function(x){pred_var_lasso_det(rbind(train,test[1:(x-1),]),lam,i,test[x+1,])})
+  
+ 
+
 save(mses_var_lasso_det,file="mses_var_lasso_det.RData")
+
+mses_var_lasso_det_df=data.frame(matrix(NA,ncol=9*3,nrow=length(mse_var_lasso_det_data)/3))
+for(i in  1:length(mse_var_lasso_det_data)/3){
+  for(j in 1:(3*9)){
+    mses_var_lasso_det_df[i,j]=mse_var_lasso_det_data[i+j-1]
+  }
+}
+
+names=c("AUD","CAD","CHF","EUR","GBP","JPY","NOK","NZD","SEK")
+
+barplot(colMeans(mses_var_lasso_det_1),pch=1,col=1:9,main="Average MSE by currency for 1-lag VAR lasso",ylab="Ave MSE by currency",names.arg=names,cex.names=0.8)
+
+barplot(colMeans(mses_var_lasso_det_2),pch=1,col=1:9,main="Average MSE by currency for 1-lag VAR lasso",ylab="Ave MSE by currency",names.arg=names,cex.names=0.8)
+
 
 
 ```
@@ -312,8 +343,13 @@ for(i in 1:length(ps)){
 #PLotting
 matplot(lams,ave_mse_train,type=c("b"),pch=1,col=1:3,main="Training MSEs by lambda",xlab="Lambdas",ylab="Ave MSE over all currencies")
 legend("topright",legend=1:3,col=1:3,pch=1)
+dev.copy(pdf,"Training MSES by lambda - ordered lasso")
+dev.off()
+  
 matplot(lams,ave_mse_test,type=c("b"),pch=1,col=1:3,main="Testing MSEs by lambda",xlab="Lambdas",ylab="Ave MSE over all currencies")
 legend("topright",legend=1:3,col=1:3,pch=1)
+dev.copy(pdf,"Testing MSES by lambda - ordered lasso")
+dev.off()
 
 ```
 
