@@ -6,6 +6,9 @@ output: pdf_document
 #installing needed packages
 ```{r, warning=FALSE,tidy=TRUE, message=FALSE }
 #Setup 
+library(e1071)
+library(lubridate)
+library(tidyverse)
 library(gridExtra)
 library(xlsx)
 library(forecast)
@@ -21,8 +24,6 @@ library(vars)
 library(BigVAR)
 library(orderedLasso)
 library(BioPhysConnectoR)
-library(lubridate)
-library(tidyverse)
 
 #Set seed
 set.seed(1560)
@@ -39,11 +40,10 @@ load_data_from_scratch = F
 if(load_data_from_scratch){
   file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
   currencies = strsplit(file_names[1:(length(file_names)-1)],'USD.csv')
-  colnames(labels)[1] = "Date"
   
-labels = read.csv(file_names[length(file_names)],header = T)
-labels[,1] = as.Date(labels[,1], origin = lubridate::origin )
-colnames(labels)[1] = "Date"
+  labels = read.csv(file_names[length(file_names)],header = T)
+  labels[,1] = as.Date(labels[,1], origin = lubridate::origin )
+  colnames(labels)[1] = "Date"
   prices = lapply(file_names[1:length(currencies)], function(x) { 
     temp = read.csv(x ,header = T)
     temp = temp[,c("Date","Close")]
@@ -59,7 +59,7 @@ colnames(labels)[1] = "Date"
   dates = unique(labels[,1])
   
   #compute return series
-  get_rets = function(x){
+  get_5min_rets = function(x){
     tot_rets = data.frame(Date=as.Date(character()), Returns = numeric())
     pos = 1
     for(i in 1:length(dates)){
@@ -76,22 +76,40 @@ colnames(labels)[1] = "Date"
     return(tot_rets)
   }
   
-  returns = lapply(prices, get_rets)
+  rets_5min = lapply(prices, get_5min_rets)
+  
+  get_daily_rets = function(x){
+    rets = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 1:length(dates)){
+      indicies = which(x[,1] == dates[i])
+      len = length(indicies)
+      if(len != 0){
+        ret = log(x[indicies[len],2]/x[indicies[1],2]) #return for the day is log(P_23:55/P_0:00)
+        rets[pos,] = list(dates[i],ret, labels[which(labels$Date == dates[i]),2])
+        pos = pos + 1
+        }
+    }
+    return(rets)
+  }
+  
+  daily_rets = lapply(prices, get_daily_rets)
+  
   
   
   #compute volatility series
 
-  get_vols = function(x){
+  get_daily_vols = function(x){
 
     vols = data.frame(Date=as.Date(character()), Vol = numeric(), Train = numeric() )
     pos = 1
     for(i in 1:length(dates)){
       indicies = which(x[,1] == dates[i])
       if(length(indicies) != 0){
-          daily_rets = x[indicies,2]
-          daily_vol = sqrt(252) * sd(daily_rets) #annualize volatility
-          if(daily_vol != 0){ #get rid of days during which vol is 0
-            vols[pos,] = list(dates[i],log(daily_vol), labels[which(labels$Date == dates[i]),2])
+          rets = x[indicies,2]
+          vol = sqrt(252) * sd(rets) #annualize volatility
+          if(vol != 0){ #get rid of days during which vol is 0
+            vols[pos,] = list(dates[i],log(vol), labels[which(labels$Date == dates[i]),2])
             pos = pos + 1
         }
       }
@@ -99,19 +117,57 @@ colnames(labels)[1] = "Date"
     return(vols)
   }
   
-  vols = lapply(returns,get_vols)
-  save(returns, file = "returns.RData")
-  save(vols,file="vols.RData")
-  save(prices, file = "prices.RData")
+  daily_vols = lapply(rets_5min,get_daily_vols)
+  
+  dates_by_curr = lapply(daily_vols, function(x){ x$Date}) #which dates have non-zero vols
+  
+  get_weekly_vols = function(curr){
+    x = rets_5min[[curr]]
+    c_dates = dates_by_curr[[curr]]
+    
+    vols = data.frame(Date=as.Date(character()), Vol = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 5:length(c_dates)){
+      indicies = unique(unlist(sapply((i-4):i, function(j) { which(x[,1] == c_dates[j])})))
+      if(length(indicies) != 0){
+          rets = x[indicies,2]
+          vol = sqrt(50) * sd(rets) #annualize volatility
+          if(vol != 0){ #get rid of days during which vol is 0
+            vols[pos,] = list(c_dates[i],log(vol), labels[which(labels$Date == c_dates[i]),2])
+            pos = pos + 1
+        }
+      }
+    }
+    return(vols)
+  }
+  
+  weekly_vols = lapply(currencies, get_weekly_vols)
+  names(weekly_vols) = currencies
+  
+  
+  save(daily_rets,file = "daily_rets.Rdata")
+  save(daily_vols,file="daily_vols.RData")
+  save(weekly_vols,file="weekly_vols.RData")
 }
 
 if(!load_data_from_scratch)  {
-  load("vols.RData")
-  load("prices.RData")
-  load("returns.RData")
+  load("daily_vols.RData")
+  load("weekly_vols.RData")
+  load("daily_returns.RData")
 }
   
   
 ```
+
+
+#Support Vector Machine implementation
+
+
+
+
+
+
+
+
 
 
