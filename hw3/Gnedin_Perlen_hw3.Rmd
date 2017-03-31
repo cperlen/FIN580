@@ -202,54 +202,35 @@ get_labels=function(curr){
   return(labels)
 }
 
+#compute indices of trianing set
 train_indicies = sapply(daily_vols,function(x) { which(x[,3] == 1)})
+names(train_indicies) = currencies 
 
 
+#helper function, fits svm to linear vols
 svm_daily_linear = function(delta){
   delta <<- delta
+  
+  #computes labels (which depend on delta)
   train_labels = sapply(currencies, get_labels)
+  names(train_labels) = currencies 
+  
+  #generates models
   svm_models = sapply(currencies,function(curr){
-    y = train_labels[[curr]]
+    #define data set
+    y = as.factor(train_labels[[curr]])
     x = daily_vols[[curr]][train_indicies[[curr]],2]
-    svm_tune = tune(svm, train.x=x, train.y=y, kernel="linear", ranges=list(cost=10^(-1:2), gamma=c(.5,1,2)))
-    svm_model <- svm(y ~ ., data=cbind(x,y))
+    df = as.data.frame(cbind(x,y))
+    names(df) = c("vol","label")
+    
+    #tune and fit model
+    svm_tune = tune(svm, train.x=df$vol, train.y=as.factor(df$label), kernel="linear", ranges=list(cost=10^(-1:2), gamma=c(.5,1,2)), type = 'C-classification')
+    svm_model = svm(df$label ~ ., data=df,kernel="linear", cost = svm_tune$best.model$cost, gamma = svm_tune$best.model$gamma,type = 'C-classification')
     return(svm_model)
   })
+  names(svm_models) = currencies
 }
   
 
 ```
 
-
-
-#testing code for SVM, still in progress do not run
-
-```{r}
-curr = "AUD"
-  training_index = train_indicies[[curr]]
-  vol_series = daily_vols[[curr]][,2]
-  delta = -.05
-  labels = sapply(training_index, function(i){ 
-    if(vol_series[i+1]/vol_series[i] -1 >= delta){
-      return(1)
-    }
-    else{
-      return(-1)
-    }})
-
-  train_labels = sapply(currencies, get_labels)
-  names(train_labels) = currencies ###
-  svm_models = lapply(currencies,function(curr){
-        print(curr)
-    y = train_labels[[curr]]
-    print('y')
-    x = daily_vols[[curr]][train_indicies[[curr]],2]
-        print('x')
-    svm_tune = tune(svm, train.x=x, train.y=y, kernel="linear", ranges=list(cost=10^(-1:2), gamma=c(.5,1,2)), type = 'C-classification')
-        print('tune')
-    svm_model = svm(y ~ ., data=cbind(x,y),kernel="linear", type = C-classification)
-    return(svm_model)
-  })
-  names(svm_models) = currencies
-
-```
