@@ -43,6 +43,8 @@ if(load_data_from_scratch){
   
   labels = read.csv(file_names[length(file_names)],header = T)
   labels[,1] = as.Date(labels[,1], origin = lubridate::origin )
+  labels[nrow(labels),2] = 0 #not training on last day because need to see next to to classify
+  
   colnames(labels)[1] = "Date"
   prices = lapply(file_names[1:length(currencies)], function(x) { 
     temp = read.csv(x ,header = T)
@@ -160,14 +162,58 @@ if(!load_data_from_scratch)  {
 ```
 
 
-#Support Vector Machine implementation
+#Support Vector Machine implementation: Work in progress I will handle.  Nina take care of logistic regression
+
+```{r}
+#intuition for choosing delta grid
+train_indicies = which(daily_vols$AUD[,3] == 1)
+AUDvols = daily_vols$AUD[,2]
+delta = 0.0
+for(i in 1:(length(train_indicies)-1)){
+  index = train_indicies[i]
+  if(AUDvols[index+1] >= AUDvols[index]){
+    delta = delta + AUDvols[index+1]/ AUDvols[index] -1
+  }
+  else{
+    delta = delta + 1 - AUDvols[index+1]/ AUDvols[index-1]
+  }
+}
+delta / (length(train_indicies)-1)
 
 
 
+#define grid
+delta_grid = seq(-.1,.1,25)
 
 
+#function for svm
+get_labels=function(curr){
+  training_index = train_indicies[[curr]]
+  vol_series = daily_vols[[curr]][,2]
+  labels = sapply(train_indicies, function(i){ 
+    if(vol_series[i+1]/vol_series[i] -1 >= delta){
+      return(1)
+    }
+    else{
+      return(-1)
+    }})
+  return(unlist(labels))
+}
 
+train_indicies = sapply(daily_vols,function(x) {
+  temp = which(x[,3] == 1)}
+  if(length(temp))
+  )
 
+svm_daily = function(delta){
+  delta <<- delta
+  labels = sapply(currencies, get_labels)
+  svm_models = sapply(currencies,function(curr){
+    
+  })
+  svm_tune <- tune(svm, train.x=x, train.y=y, 
+              kernel="linear", ranges=list(cost=10^(-1:2), gamma=c(.5,1,2)))
+}
+  
 
-
-
+```
