@@ -150,12 +150,14 @@ if(load_data_from_scratch){
   save(daily_rets,file = "daily_rets.Rdata")
   save(daily_vols,file="daily_vols.RData")
   save(weekly_vols,file="weekly_vols.RData")
+  save(currencies, file = "currencies.RData")
 }
 
 if(!load_data_from_scratch)  {
   load("daily_vols.RData")
   load("weekly_vols.RData")
   load("daily_returns.RData")
+  load("currencies.RData")
 }
   
   
@@ -183,37 +185,71 @@ delta / (length(train_indicies)-1)
 
 
 #define grid
-delta_grid = seq(-.1,.1,25)
+delta_grid = seq(-.1,.1,.2/25)
 
 
 #function for svm
 get_labels=function(curr){
   training_index = train_indicies[[curr]]
   vol_series = daily_vols[[curr]][,2]
-  labels = sapply(train_indicies, function(i){ 
+  labels = sapply(training_index, function(i){ 
     if(vol_series[i+1]/vol_series[i] -1 >= delta){
       return(1)
     }
     else{
       return(-1)
     }})
-  return(unlist(labels))
+  return(labels)
 }
 
-train_indicies = sapply(daily_vols,function(x) {
-  temp = which(x[,3] == 1)}
-  if(length(temp))
-  )
+train_indicies = sapply(daily_vols,function(x) { which(x[,3] == 1)})
 
-svm_daily = function(delta){
+
+svm_daily_linear = function(delta){
   delta <<- delta
-  labels = sapply(currencies, get_labels)
+  train_labels = sapply(currencies, get_labels)
   svm_models = sapply(currencies,function(curr){
-    
+    y = train_labels[[curr]]
+    x = daily_vols[[curr]][train_indicies[[curr]],2]
+    svm_tune = tune(svm, train.x=x, train.y=y, kernel="linear", ranges=list(cost=10^(-1:2), gamma=c(.5,1,2)))
+    svm_model <- svm(y ~ ., data=cbind(x,y))
+    return(svm_model)
   })
-  svm_tune <- tune(svm, train.x=x, train.y=y, 
-              kernel="linear", ranges=list(cost=10^(-1:2), gamma=c(.5,1,2)))
 }
   
+
+```
+
+
+
+#testing code for SVM, still in progress do not run
+
+```{r}
+curr = "AUD"
+  training_index = train_indicies[[curr]]
+  vol_series = daily_vols[[curr]][,2]
+  delta = -.05
+  labels = sapply(training_index, function(i){ 
+    if(vol_series[i+1]/vol_series[i] -1 >= delta){
+      return(1)
+    }
+    else{
+      return(-1)
+    }})
+
+  train_labels = sapply(currencies, get_labels)
+  names(train_labels) = currencies ###
+  svm_models = lapply(currencies,function(curr){
+        print(curr)
+    y = train_labels[[curr]]
+    print('y')
+    x = daily_vols[[curr]][train_indicies[[curr]],2]
+        print('x')
+    svm_tune = tune(svm, train.x=x, train.y=y, kernel="linear", ranges=list(cost=10^(-1:2), gamma=c(.5,1,2)), type = 'C-classification')
+        print('tune')
+    svm_model = svm(y ~ ., data=cbind(x,y),kernel="linear", type = C-classification)
+    return(svm_model)
+  })
+  names(svm_models) = currencies
 
 ```
