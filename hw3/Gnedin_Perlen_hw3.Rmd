@@ -33,18 +33,17 @@ set.seed(1560)
 Reading in and preprocessing data
 ```{r, warning=FALSE,tidy=TRUE, message=FALSE }
 
-load_data_from_scratch = F
 setwd("~/Desktop/FIN580/data")
+load_data_from_scratch = F
 
-file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
-currencies = strsplit(file_names[1:(length(file_names)-1)],'USD.csv')
-colnames(labels)[1] = "Date"
+if(load_data_from_scratch){
+  file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
+  currencies = strsplit(file_names[1:(length(file_names)-1)],'USD.csv')
+  colnames(labels)[1] = "Date"
   
 labels = read.csv(file_names[length(file_names)],header = T)
 labels[,1] = as.Date(labels[,1], origin = lubridate::origin )
 colnames(labels)[1] = "Date"
-  
-if(load_data_from_scratch){
   prices = lapply(file_names[1:length(currencies)], function(x) { 
     temp = read.csv(x ,header = T)
     temp = temp[,c("Date","Close")]
@@ -101,14 +100,15 @@ if(load_data_from_scratch){
   }
   
   vols = lapply(returns,get_vols)
-
+  save(returns, file = "returns.RData")
   save(vols,file="vols.RData")
+  save(prices, file = "prices.RData")
 }
 
 if(!load_data_from_scratch)  {
-  file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
-  currencies = strsplit(file_names[1:(length(file_names)-1)],'USD.csv')
   load("vols.RData")
+  load("prices.RData")
+  load("returns.RData")
 }
   
   
