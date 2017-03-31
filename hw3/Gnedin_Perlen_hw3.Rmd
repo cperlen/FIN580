@@ -1,0 +1,117 @@
+---
+title: "FIN580_HW3"
+output: pdf_document
+---
+
+#installing needed packages
+```{r, warning=FALSE,tidy=TRUE, message=FALSE }
+#Setup 
+library(gridExtra)
+library(xlsx)
+library(forecast)
+library(tseries)
+library(stats)
+library(car)
+library(glmnet)
+library(miscTools)
+library(Metrics)
+library(knitr)
+library(class)
+library(vars)
+library(BigVAR)
+library(orderedLasso)
+library(BioPhysConnectoR)
+library(lubridate)
+library(tidyverse)
+
+#Set seed
+set.seed(1560)
+
+```
+
+
+Reading in and preprocessing data
+```{r, warning=FALSE,tidy=TRUE, message=FALSE }
+
+load_data_from_scratch = F
+setwd("~/Desktop/FIN580/data")
+
+file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
+currencies = strsplit(file_names[1:(length(file_names)-1)],'USD.csv')
+colnames(labels)[1] = "Date"
+  
+labels = read.csv(file_names[length(file_names)],header = T)
+labels[,1] = as.Date(labels[,1], origin = lubridate::origin )
+colnames(labels)[1] = "Date"
+  
+if(load_data_from_scratch){
+  prices = lapply(file_names[1:length(currencies)], function(x) { 
+    temp = read.csv(x ,header = T)
+    temp = temp[,c("Date","Close")]
+    if(x == "AUDUSD.csv"){
+      temp$Date = as.Date(temp$Date, format = "%m/%d/%y",origin = lubridate::origin) #why it has a different format I have no idea
+    }
+    else{
+      temp$Date = as.Date(temp$Date, format = "%m/%d/%Y",origin = lubridate::origin)
+    }
+    return(temp) })
+  
+  names(prices) = currencies
+  dates = unique(labels[,1])
+  
+  #compute return series
+  get_rets = function(x){
+    tot_rets = data.frame(Date=as.Date(character()), Returns = numeric())
+    pos = 1
+    for(i in 1:length(dates)){
+      indicies = which(x[,1] == dates[i])
+      if(length(indicies) != 0){
+  
+        daily_prices = x[indicies,2]
+        daily_rets = log(daily_prices[2:length(daily_prices)]/daily_prices[1:(length(daily_prices)-1)])
+        len = length(daily_rets)
+        tot_rets[pos:(pos+len-1),] = list(rep(dates[i],length(daily_rets)),daily_rets)
+        pos = pos + len
+      }
+    }
+    return(tot_rets)
+  }
+  
+  returns = lapply(prices, get_rets)
+  
+  
+  #compute volatility series
+
+  get_vols = function(x){
+
+    vols = data.frame(Date=as.Date(character()), Vol = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 1:length(dates)){
+      indicies = which(x[,1] == dates[i])
+      if(length(indicies) != 0){
+          daily_rets = x[indicies,2]
+          daily_vol = sqrt(252) * sd(daily_rets) #annualize volatility
+          if(daily_vol != 0){ #get rid of days during which vol is 0
+            vols[pos,] = list(dates[i],log(daily_vol), labels[which(labels$Date == dates[i]),2])
+            pos = pos + 1
+        }
+      }
+    }
+    return(vols)
+  }
+  
+  vols = lapply(returns,get_vols)
+
+  save(vols,file="vols.RData")
+}
+
+if(!load_data_from_scratch)  {
+  file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
+  currencies = strsplit(file_names[1:(length(file_names)-1)],'USD.csv')
+  load("vols.RData")
+}
+  
+  
+```
+
+
