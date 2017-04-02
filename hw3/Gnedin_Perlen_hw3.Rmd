@@ -215,7 +215,12 @@ delta / (length(train_indicies)-1)
 #define grid
 delta_grid = seq(-.1,.1,.2/25)
 
+```
 
+
+
+Fit daily svm
+```{r}
 #function for svm
 get_labels=function(curr){
   training_index = train_indicies[[curr]]
@@ -236,29 +241,43 @@ names(train_indicies) = currencies
 
 
 #helper function, fits svm to linear vols
-svm_daily_linear = function(delta){
-  delta <<- delta
+delta <<- delta
+
+svm_daily_linear = function(delta,curr){
   
   #computes labels (which depend on delta)
-  train_labels = sapply(currencies, get_labels)
-  names(train_labels) = currencies 
+  vols = daily_vols[[curr]]
+  train_indices = which(vols[,3] == 1)
+  test_indices = which(vols[,3] == 0) 
+  test_indicies = test_indicies[1:(length(test_indicies-1))] #do not include last date
   
-  #generates models
-  svm_models = sapply(currencies,function(curr){
-    #define data set
-    y = as.factor(train_labels[[curr]])
-    x = daily_vols[[curr]][train_indicies[[curr]],2]
-    df = as.data.frame(cbind(x,y))
-    names(df) = c("vol","label")
+  #generates model data sets
+  train_labels = get_labels(curr) #codes +- 1
+  y = as.factor(train_labels)
+  x = daily_vols[[curr]][train_indicies,2]
+  df = as.data.frame(cbind(x,y))
+  names(df) = c("vol","label")
     
-    #tune and fit model
-    svm_tune = tune(svm, train.x=df$vol, train.y=as.factor(df$label), kernel="linear", ranges=list(cost=10^(-1:2), gamma=c(.5,1,2)), type = 'C-classification')
-    svm_model = svm(df$label ~ ., data=df,kernel="linear", cost = svm_tune$best.model$cost, gamma = svm_tune$best.model$gamma,type = 'C-classification')
-    return(svm_model)
+  #tune and fit svm 
+  svm_tune = tune(svm, train.x=df$vol, train.y=df$label, kernel="linear", ranges=list(cost=10^(-1:2), gamma=c(.5,1,2)), type = 'C-classification')
+  svm_model = svm(df$label ~ ., data=df,kernel="linear", cost = svm_tune$best.model$cost, gamma = svm_tune$best.model$gamma,type = 'C-classification')
+
+  #regression model
+  test_labels = predict(svm_models[[curr]], vols[test_indicies,2]) #svm prediction
+  test_predictions = sapply(1:length(test_labels), function(i) {
+    if (test_labels[i] == 1){
+      return(vols[test_indicies[i]] * (1 + delta)) 
+    }
+    else{
+      return(vols[test_indicies[i]] * (1 - delta)) 
+    }
   })
-  names(svm_models) = currencies
-}
   
+  #compute mse
+  return( mean( (test_predictions - vols[test_indicies+1,2])^2))
+}
+
 
 ```
 
+include plots of data in feature space
