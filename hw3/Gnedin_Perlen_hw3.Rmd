@@ -43,9 +43,9 @@ if(load_data_from_scratch){
   
   labels = read.csv(file_names[length(file_names)],header = T)
   labels[,1] = as.Date(labels[,1], origin = lubridate::origin )
-  labels[nrow(labels),2] = 0 #not training on last day because need to see next to to classify
-  
+  labels[nrow(labels),2] = 0 #not training on last day because do not have data to test fit
   colnames(labels)[1] = "Date"
+  
   prices = lapply(file_names[1:length(currencies)], function(x) { 
     temp = read.csv(x ,header = T)
     temp = temp[,c("Date","Close")]
@@ -121,13 +121,17 @@ if(load_data_from_scratch){
   
   daily_vols = lapply(rets_5min,get_daily_vols)
   
+  
+  #weekly statics
   dates_by_curr = lapply(daily_vols, function(x){ x$Date}) #which dates have non-zero vols
+  
+  
   
   get_weekly_vols = function(curr){
     x = rets_5min[[curr]]
     c_dates = dates_by_curr[[curr]]
     
-    vols = data.frame(Date=as.Date(character()), Vol = numeric(), Train = numeric() )
+    vols = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
     pos = 1
     for(i in 5:length(c_dates)){
       indicies = unique(unlist(sapply((i-4):i, function(j) { which(x[,1] == c_dates[j])})))
@@ -147,6 +151,29 @@ if(load_data_from_scratch){
   names(weekly_vols) = currencies
   
   
+  
+  get_weekly_rets = function(curr){
+    x = prices[[curr]]
+    c_dates = dates_by_curr[[curr]]
+    
+    rets = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 5:length(c_dates)){
+      indicies = unique(unlist(sapply((i-4):i, function(j) { which(x[,1] == c_dates[j])})))
+      n = length(indicies)
+      if(n != 0){
+          ret = log(x[indicies[n],2] / x[indicies[1],2] )#last day close divided first day open
+          rets[pos,] = list(c_dates[i],ret, labels[which(labels$Date == c_dates[i]),2]) 
+          pos = pos + 1
+        }
+      }
+    return(rets)
+  }
+  
+  weekly_rets = lapply(currencies, get_weekly_rets)
+  names(weekly_rets) = currencies
+  
+  save(weekly_rets, file = "weekly_rets.Rdata")
   save(daily_rets,file = "daily_rets.Rdata")
   save(daily_vols,file="daily_vols.RData")
   save(weekly_vols,file="weekly_vols.RData")
@@ -156,7 +183,8 @@ if(load_data_from_scratch){
 if(!load_data_from_scratch)  {
   load("daily_vols.RData")
   load("weekly_vols.RData")
-  load("daily_returns.RData")
+  load("daily_rets.RData")
+  load("weekly_rets.RData")
   load("currencies.RData")
 }
   
