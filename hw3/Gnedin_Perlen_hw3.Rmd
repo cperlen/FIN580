@@ -285,47 +285,62 @@ svm_daily_linear = function(delta,curr){
 include plots of data in feature space
 
 
-
 Logistic Regression Implementation
+Data getting function for LR 
 ```{r,tidy=TRUE,warning=FALSE}
-#Since the R lag function doesn't pad with NAs - we write our own lag function
-lagpad = function(x, k) {
-    if (!is.vector(x)) 
-        stop('x must be a vector')
-    if (!is.numeric(x)) 
-        stop('x must be numeric')
-    if (!is.numeric(k))
-        stop('k must be numeric')
-    if (1 != length(k))
-        stop('k must be a single number')
-    c(rep(NA, k), x)[1 : length(x)] 
-}
-#Get lagged data for autoreggressive models
-get_lagged_data=function(time_series,max_lag){
-  xs=matrix(NA,nrow=length(time_series),ncol=max_lag)
-  xs[,1]=lagpad(time_series,1)
-  if(max_lag>1){
-    xs[,2]=lagpad(time_series,2)
-  }
-  if(max_lag>2){
-    xs[,3]=lagpad(time_series,3)
-  }
-  return(na.omit(xs))
-}
-#Data getting function for LR 
-#data is list of data frames, i is numeric, train is 1 (for true) or 0 (for false)
-get_lr_data=function(data,i,train){
-  use_data=data[[i]]
+#data name is "daily" or "weekly", i is numeric, train is 1 (for true) or 0 (for false), add_rt is also 1 (for true) or 0 (for false)
+get_lr_data=function(data_name,i,train,add_rt){
+  use_data=get(paste(data_name,"_vols",sep=""))
+  use_data=use_data[[i]]
   t1_indices=which(use_data[,"Train"]==train)
   t_indices=t1_indices-1
-  ret_data=data.frame(matrix(cbind(use_data[t1_indices,"Vol"],use_data[t_indices,"Vol"]),ncol=2))
-  colnames(ret_data)=c("t1","t")
+  if(add_rt>0){
+    rt=get(paste(data_name,"_rets",sep=""))
+    rt=rt[[i]]
+    ret_data=data.frame(matrix(cbind(use_data[t1_indices,"Vol"],use_data[t_indices,"Vol"],rt[t_indices,"Ret"]),ncol=3))
+    colnames(ret_data)=c("t1","t","rt")
+  }
+  else{
+    ret_data=data.frame(matrix(cbind(use_data[t1_indices,"Vol"],use_data[t_indices,"Vol"]),ncol=2))
+    colnames(ret_data)=c("t1","t")
+  }
+  
   return(ret_data)
 } 
 
+#data name is "daily" or "weekly", i is numeric, train is 1 (for true) or 0 (for false), add_rt is also 1 (for true) or 0 (for false)
+#p and q are for MA terms
+get_lr_data_pq=function(data_name,i,train,add_rt,p,q){
+  use_data=get(paste(data_name,"_vols",sep=""))
+  use_data=use_data[[i]]
+  t1_indices=which(use_data[,"Train"]==train)
+  ept=sapply(t1_indices,function(i){
+    start_i=max(i-p-2,0)+1
+    return(mean(use_data[start_i:(i-1),"Vol"]))
+  })
+  if(add_rt>0){
+    rt=get(paste(data_name,"_rets",sep=""))
+    rt=rt[[i]]
+    eqrt=sapply(t1_indices,function(i){
+    start_i=max(i-q-2,0)+1
+    return(mean(rt[start_i:(i-1),"Ret"]))
+  })
+    ret_data=data.frame(matrix(cbind(use_data[t1_indices,"Vol"],ept,eqrt),ncol=3))
+    colnames(ret_data)=c("t1","ept","eqrt")
+  }
+  else{
+    ret_data=data.frame(matrix(cbind(use_data[t1_indices,"Vol"],ept),ncol=2))
+    colnames(ret_data)=c("t1","ept")
+  }
+  return(ret_data)
+} 
 
+```
+
+Model fitting and mses
+Logistic regression - Model 1
+```{r,tidy=TRUE,warning=FALSE}
 #Optimization of delta for logistic regression over training set
-
 #Fit model for one currency for one delta
 #New_data is for prediction
 fit_lr=function(use_data,delta,new_data){
@@ -348,9 +363,9 @@ fit_lr=function(use_data,delta,new_data){
     else{
       return(new_data[i,"t"]*(1-delta))
     }
-    
-  })
-
+  } )
+  return(mse(pred_sigs,new_data[,"t1"]))
+}
 
 #Sequence of deltas to use
 deltas=seq(0,0.15,length.out=10)
@@ -363,7 +378,7 @@ colnames(mses_w)=currencies
 rownames(mses_w)=round(deltas,2)
 #Daily - train
 for(i in 1:length(currencies)){
-  u_d=get_lr_data(daily_vols,i,1)
+  u_d=get_lr_data("daily",i,1,0)
   mses_d[,i]=sapply(deltas,function(x){fit_lr(u_d,x,u_d)}) #newdata = usedata=train
 }
 
@@ -371,9 +386,10 @@ min_del_d=deltas[which.min(rowMeans(mses_d))]
 
 #Weekly - train
 for(i in 1:length(currencies)){
-  u_d=get_lr_data(weekly_vols,i,1)
+  u_d=get_lr_data("weekly",i,1,0)
   mses_w[,i]=sapply(deltas,function(x){fit_lr(u_d,x,u_d)}) #newdata = usedata=train
 }
+min_del_w=deltas[which.min(rowMeans(mses_w))]
 
 stargazer(mses_d,summary=FALSE)
 stargazer(mses_w,summary=FALSE)
@@ -391,14 +407,288 @@ mses_test=data.frame(matrix(NA,ncol=length(currencies)+1,nrow=2))
 colnames(mses_test)=c(currencies,"Average")
 rownames(mses_test)=c("Daily Testing","Weekly Testing")
 for(i in 1:length(currencies)){
-  u_d=get_lr_data(daily_vols,i,1)
-  n_d=get_lr_data(daily_vols,i,0)
+  u_d=get_lr_data("daily",i,1,0)
+  n_d=get_lr_data("daily",i,0,0)
   mses_test[1,i]=fit_lr(u_d,min_del_d,n_d)
-  u_d=get_lr_data(daily_vols,i,1)
-  n_d=get_lr_data(daily_vols,i,0)
+  u_d=get_lr_data("weekly",i,1,0)
+  n_d=get_lr_data("weekly",i,0,0)
   mses_test[2,i]=fit_lr(u_d,min_del_w,n_d)
 }
 mses_test[,ncol(mses_test)]=rowMeans(mses_test[,1:9])
 stargazer(t(mses_test),summary=FALSE,rownames=TRUE)
+
+```
+
+
+Logistic regression - Model 2
+```{r,tidy=TRUE,warning=FALSE}
+#Optimization of delta for logistic regression over training set
+#Fit model for one currency for one delta
+#New_data is for prediction
+fit_lr_2=function(use_data,delta,new_data){
+  y=sapply(seq(1,nrow(use_data),1), function(i){ 
+    if((use_data[i,"t1"]-use_data[i,"rt"])/use_data[i,"t"]-1 >= delta){
+      return(1)
+    }
+    else{
+      return(0) #glm() uses 1 or 0 shouldnt matter since we already labeled y based on its being -1 or 1
+    }})
+  use_data=cbind(y,use_data,use_data[,"t"]*delta)
+  colnames(use_data)=c(colnames(use_data[,1:4]),"t1del")
+  model=glm(formula=as.formula("y~(t1-rt-t)/(t1del)"),family=binomial(link="logit"),data=use_data)
+  new_data=cbind(use_data,use_data[,"t"]*delta)
+  pred_y=predict(model,type="response",newdata=new_data)
+  pred_sigs=sapply(seq(1,length(y),1),function(i){
+    if(round(y[i],0)==1){
+      return(new_data[i,"rt"]+new_data[i,"t"]*(1+delta))
+    }
+    else{
+      return(new_data[i,"rt"]+new_data[i,"t"]*(1-delta))
+    }
+  } )
+  return(mse(pred_sigs,new_data[,"t1"]))
+}
+
+#Sequence of deltas to use
+deltas=seq(0,0.15,length.out=10)
+#Will save mse by delta by currency just in case we want to get fancy and plot that, but probs not gonna happen tbh 
+mses_d=data.frame(matrix(NA,ncol=length(currencies),nrow=length(deltas)))
+colnames(mses_d)=currencies
+rownames(mses_d)=round(deltas,2)
+mses_w=data.frame(matrix(NA,ncol=length(currencies),nrow=length(deltas)))
+colnames(mses_w)=currencies
+rownames(mses_w)=round(deltas,2)
+#Daily - train
+for(i in 1:length(currencies)){
+  u_d=get_lr_data("daily",i,1,1)
+  mses_d[,i]=sapply(deltas,function(x){fit_lr_2(u_d,x,u_d)}) #newdata = usedata=train
+}
+
+min_del_d=deltas[which.min(rowMeans(mses_d))]
+
+#Weekly - train
+for(i in 1:length(currencies)){
+  u_d=get_lr_data("weekly",i,1,1)
+  mses_w[,i]=sapply(deltas,function(x){fit_lr_2(u_d,x,u_d)}) #newdata = usedata=train
+}
+
+min_del_w=deltas[which.min(rowMeans(mses_w))]
+
+stargazer(mses_d,summary=FALSE)
+stargazer(mses_w,summary=FALSE)
+
+#Plot MSES vs. Delta - training data
+plot(deltas,rowMeans(mses_d),pch=23,col=2,main="Forecaster 2: Training MSE by Delta - Daily Vols",xlab="Delta",ylab="MSE over training data")
+dev.copy(pdf,"lr_daily_train_2.pdf")
+dev.off()
+plot(deltas,rowMeans(mses_w),pch=2,col=3,main="Forecaster 2: Training MSE by Delta - Weekly Vols",xlab="Delta",ylab="MSE over training data")
+dev.copy(pdf,"lr_weekly_train_2.pdf")
+dev.off()
+
+#Testing mses - we'll combine weekly and daily
+mses_test=data.frame(matrix(NA,ncol=length(currencies)+1,nrow=2))
+colnames(mses_test)=c(currencies,"Average")
+rownames(mses_test)=c("Daily Testing","Weekly Testing")
+for(i in 1:length(currencies)){
+  u_d=get_lr_data("daily",i,1,1)
+  n_d=get_lr_data("daily",i,0,1)
+  mses_test[1,i]=fit_lr(u_d,min_del_d,n_d)
+  u_d=get_lr_data("weekly",i,1,0)
+  n_d=get_lr_data("weekly",i,0,0)
+  mses_test[2,i]=fit_lr(u_d,min_del_w,n_d)
+}
+mses_test[,ncol(mses_test)]=rowMeans(mses_test[,1:9])
+stargazer(t(mses_test),summary=FALSE,rownames=TRUE)
+```
+
+Logistic regression - Model 3 
+```{r,tidy=TRUE,warning=FALSE}
+#Optimization of delta for logistic regression over training set
+#Fit model for one currency for one delta
+#New_data is for prediction
+fit_lr_3=function(use_data,delta,new_data,p){
+  y=sapply(seq(1,nrow(use_data),1), function(i){ 
+    if((use_data[i,"t1"])/use_data[i,"ept"]-1 >= delta){
+      return(1)
+    }
+    else{
+      return(0) #glm() uses 1 or 0 shouldnt matter since we already labeled y based on its being -1 or 1
+    }})
+  use_data=cbind(y,use_data,use_data[,"ept"]*delta)
+  colnames(use_data)=c(colnames(use_data[,1:3]),"eptdel")
+  model=glm(formula=as.formula("y~(t1-ept)/(eptdel)"),family=binomial(link="logit"),data=use_data)
+  new_data=cbind(use_data,use_data[,"ept"]*delta)
+  pred_y=predict(model,type="response",newdata=new_data)
+  pred_sigs=sapply(seq(1,length(y),1),function(i){
+    if(round(y[i],0)==1){
+      return(new_data[i,"ept"]*(1+delta))
+    }
+    else{
+      return(new_data[i,"ept"]*(1-delta))
+    }
+  } )
+  return(mse(pred_sigs,new_data[,"t1"]))
+}
+
+#Sequence of deltas to use
+deltas=seq(0,0.15,length.out=10)
+ps=c(3,5,10)
+#Will save mse by delta by currency just in case we want to get fancy and plot that, but probs not gonna happen tbh 
+#To save memory - I manually change p and re-run to avoid saving down too many new tables and crashing R
+p=10
+mses_d=data.frame(matrix(NA,ncol=length(currencies),nrow=length(deltas)))
+colnames(mses_d)=currencies
+rownames(mses_d)=round(deltas,2)
+mses_w=data.frame(matrix(NA,ncol=length(currencies),nrow=length(deltas)))
+colnames(mses_w)=currencies
+rownames(mses_w)=round(deltas,2)
+#Daily - train
+for(i in 1:length(currencies)){
+  u_d=get_lr_data_pq("daily",i,1,0,p,1) #q does't matter if no rt
+  mses_d[,i]=sapply(deltas,function(x){fit_lr_3(u_d,x,u_d,p)}) #newdata = usedata=train
+}
+
+min_3_d=min(rowMeans(mses_d))
+min_del_d_3=deltas[which.min(rowMeans(mses_d))]
+
+min_5_d=min(rowMeans(mses_d))
+min_del_d_5=deltas[which.min(rowMeans(mses_d))]
+
+min_10_d=min(rowMeans(mses_d))
+min_del_d_10=deltas[which.min(rowMeans(mses_d))]
+
+#Weekly - train
+for(i in 1:length(currencies)){
+  u_d=get_lr_data_pq("weekly",i,1,0,p,1)
+  mses_w[,i]=sapply(deltas,function(x){fit_lr_3(u_d,x,u_d,p)}) #newdata = usedata=train
+}
+
+min_3_w=min(rowMeans(mses_w))
+min_del_w_3=deltas[which.min(rowMeans(mses_w))]
+
+min_5_w=min(rowMeans(mses_w))
+min_del_w_5=deltas[which.min(rowMeans(mses_w))]
+
+min_10_w=min(rowMeans(mses_w))
+min_del_w_10=deltas[which.min(rowMeans(mses_w))]
+
+stargazer(mses_d,summary=FALSE)
+stargazer(mses_w,summary=FALSE)
+
+#Plot MSES vs. Delta - training data
+plot(deltas,rowMeans(mses_d),pch=23,col=2,main="Forecaster 3: Training MSE by Delta - Daily Vols - p=10",xlab="Delta",ylab="MSE over training data")
+dev.copy(pdf,"lr_daily_train_3_10.pdf")
+dev.off()
+plot(deltas,rowMeans(mses_w),pch=2,col=3,main="Forecaster 3: Training MSE by Delta - Weekly Vols - p=10",xlab="Delta",ylab="MSE over training data")
+dev.copy(pdf,"lr_weekly_train_3_10.pdf")
+dev.off()
+
+#Testing mses - we'll combine weekly and daily into one table
+p_opt_d=ps[which.min(c(min_3_d,min_5_d,min_10_d))] #p=5
+del_opt_d=deltas[which.min(c(min_del_d_3,min_del_d_5,min_del_d_10))]
+p_opt_w=ps[which.min(c(min_3_w,min_5_w,min_10_w))] #p=3
+del_opt_w=deltas[which.min(c(min_del_w_3,min_del_w_5,min_del_w_10))]
+mses_test=data.frame(matrix(NA,ncol=length(currencies)+1,nrow=2))
+colnames(mses_test)=c(currencies,"Average")
+rownames(mses_test)=c("Daily Testing p=5","Weekly Testing p=3")
+for(i in 1:length(currencies)){
+  u_d=get_lr_data_pq("daily",i,1,0,p_opt_d,1)
+  n_d=get_lr_data_pq("daily",i,0,0,p_opt_d,1)
+  mses_test[1,i]=fit_lr_3(u_d,del_opt_d,n_d,p_opt_d)
+  u_d=get_lr_data_pq("weekly",i,1,0,p_opt_w,1)
+  n_d=get_lr_data_pq("weekly",i,0,0,p_opt_w,1)
+  mses_test[2,i]=fit_lr_3(u_d,del_opt_w,n_d,p_opt_w)
+}
+mses_test[,ncol(mses_test)]=rowMeans(mses_test[,1:9])
+stargazer(t(mses_test),summary=FALSE,rownames=TRUE)
+
+```
+
+Logistic regression - Model 4
+```{r,tidy=TRUE,warning=FALSE}
+#Optimization of delta for logistic regression over training set
+#Fit model for one currency for one delta
+#New_data is for prediction
+fit_lr_4=function(use_data,delta,new_data,p,q){
+  y=sapply(seq(1,nrow(use_data),1), function(i){ 
+    if((use_data[i,"t1"]-use_data[i,"eqrt"])/use_data[i,"ept"]-1 >= delta){
+      return(1)
+    }
+    else{
+      return(0) #glm() uses 1 or 0 shouldnt matter since we already labeled y based on its being -1 or 1
+    }})
+  use_data=cbind(y,use_data,use_data[,"ept"]*delta)
+  colnames(use_data)=c(colnames(use_data[,1:4]),"eptdel")
+  model=glm(formula=as.formula("y~(t1-eqrt-ept)/(eptdel)"),family=binomial(link="logit"),data=use_data)
+  new_data=cbind(use_data,use_data[,"ept"]*delta)
+  pred_y=predict(model,type="response",newdata=new_data)
+  pred_sigs=sapply(seq(1,length(y),1),function(i){
+    if(round(y[i],0)==1){
+      return(new_data[i,"eqrt"]+new_data[i,"ept"]*(1+delta))
+    }
+    else{
+      return(new_data[i,"eqrt"]+new_data[i,"ept"]*(1-delta))
+    }
+  } )
+  return(mse(pred_sigs,new_data[,"t1"]))
+}
+#Note we will not be outputting all 18 combination of daily/weekly, ps , and qs just the optimal
+#Optimizing
+qs=ps
+mses_d=data.frame(matrix(NA,ncol=length(currencies),nrow=length(deltas)))
+colnames(mses_d)=currencies
+rownames(mses_d)=round(deltas,2)
+mses_w=data.frame(matrix(NA,ncol=length(currencies),nrow=length(deltas)))
+colnames(mses_w)=currencies
+rownames(mses_w)=round(deltas,2)
+min_d=100000
+min_w=100000
+
+for(k in 1:length(ps)){
+  print(paste("p",ps[k]))
+  for(j in 1:length(qs)){
+    print(paste("q",qs[j]))
+    for(i in 1:length(currencies)){
+    u_d=get_lr_data_pq("daily",i,1,1,ps[k],qs[j]) 
+    mses_d[,i]=sapply(deltas,function(x){fit_lr_4(u_d,x,u_d,p,q)})
+    u_d=get_lr_data_pq("weekly",i,1,1,ps[k],qs[j])
+    mses_w[,i]=sapply(deltas,function(x){fit_lr_4(u_d,x,u_d,p,q)})
+    }
+    #Check for new min
+    if(min(rowMeans(mses_d))<min_d){
+      i_d=which.min(rowMeans(mses_d))
+      del_opt_d=deltas[i_d]
+      p_opt_d=ps[k]
+      q_opt_d=qs[j]
+      min_d=min(rowMeans(mses_d))
+    }
+    if(min(rowMeans(mses_w))<min_w){
+      i_w=which.min(rowMeans(mses_w))
+      del_opt_w=deltas[i_w]
+      p_opt_w=ps[k]
+      q_opt_w=qs[j]
+      min_w=min(rowMeans(mses_w))
+    }
+  }
+}
+
+#Run on testing data w optimal parameters
+mses_test=data.frame(matrix(NA,ncol=length(currencies)+1,nrow=2))
+colnames(mses_test)=c(currencies,"Average")
+rownames(mses_test)=c(paste("Daily Testing",round(del_opt_d,3),p_opt_d,q_opt_d),paste("Weekly Testing",round(del_opt_w,3),p_opt_w,q_opt_w))
+for(i in 1:length(currencies)){
+  u_d=get_lr_data_pq("daily",i,1,1,p_opt_d,q_opt_d)
+  n_d=get_lr_data_pq("daily",i,0,1,p_opt_d,q_opt_d)
+  mses_test[1,i]=fit_lr_4(u_d,del_opt_d,n_d,p_opt_d,q_opt_w)
+  u_d=get_lr_data_pq("weekly",i,1,1,p_opt_w,q_opt_w)
+  n_d=get_lr_data_pq("weekly",i,0,1,p_opt_w,q_opt_w)
+  mses_test[2,i]=fit_lr_4(u_d,del_opt_w,n_d,p_opt_w,q_opt_w)
+}
+mses_test[,ncol(mses_test)]=rowMeans(mses_test[,1:9])
+stargazer(t(mses_test),summary=FALSE,rownames=TRUE)
+
+
+
+
 
 ```
