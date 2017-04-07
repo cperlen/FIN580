@@ -32,10 +32,9 @@ set.seed(1560)
 
 #Test
 ```
-
 ---
-
-Reading in and preprocessing data
+  
+  Reading in and preprocessing data
 ```{r, warning=FALSE,tidy=TRUE, message=FALSE }
 
 setwd("~/Desktop/FIN580/data")
@@ -177,68 +176,69 @@ if(load_data_from_scratch){
   weekly_rets = lapply(currencies, get_weekly_rets)
   names(weekly_rets) = currencies
   
-  save(weekly_rets, file = "weekly_rets.Rdata")
-  save(daily_rets,file = "daily_rets.Rdata")
-  save(daily_vols,file="daily_vols.RData")
-  save(weekly_vols,file="weekly_vols.RData")
+  append_target = function(ts){
+    for(curr in currencies){
+      temp = ts[[curr]]
+      len = nrow(ts[[curr]])
+      ts[[curr]] = ts[[curr]][1:(len-1),]
+      ts[[curr]] [,'Target'] = temp[2:len,2] 
+    }
+    return(ts)
+  }
+  
+  append_ret = function(ts,rets){
+    for(curr in currencies){
+      dates = ts[[curr]]$Date
+      ret = rets[[curr]]
+      pos = 1
+      for(d in dates){
+        lookup = which(ret[,1]== as.Date(d,lubridate::origin))
+        ts[[curr]][pos,'Ret'] = ret$Ret[lookup]
+        pos = pos + 1
+      }
+    }
+    return(ts)
+  }
+  
+  append_label = function(ts,rets){
+    for(curr in currencies){
+      series = ts[[curr]]
+      labels = sapply(1:nrow(series),function(i){
+        s = sign(series$Target[i] - series$Vol[i])
+        if(s == 0){ #break ties
+          s = 1
+        }
+        return(s)} )
+      ts[[curr]]['Y(t)'] = labels
+    }
+    return(ts)
+  }
+  
+  
+  daily_data = append_target(daily_vols)
+  weekly_data = append_target(weekly_vols)
+  daily_data = append_ret(daily_data,daily_rets)
+  weekly_data = append_ret(weekly_data,weekly_rets)
+  labels = append_label(daily_data)
+  
+  save(weekly_rets, file = "weekly_data.Rdata")
+  save(daily_rets,file = "daily_data.Rdata")
   save(currencies, file = "currencies.RData")
+  
+  
+  
 }
 
 if(!load_data_from_scratch)  {
-  load("daily_vols.RData")
-  load("weekly_vols.RData")
-  load("daily_rets.RData")
-  load("weekly_rets.RData")
+  load("weekly_data.Rdata")
+  load("daily_data.Rdata")
   load("currencies.RData")
+  
 }
-
 ```
 
 
-
-
-
-
-
-
-
-
-#Support Vector Machine implementation
-Preprocess data
-```{r,tidy=TRUE,warning=FALSE}
-
-append_target = function(ts){
-  for(curr in currencies){
-    temp = ts[[curr]]
-    len = nrow(ts[[curr]])
-    ts[[curr]] = ts[[curr]][1:(len-1),]
-    ts[[curr]] [,'Target'] = temp[2:len,2] 
-  }
-  return(ts)
-}
-
-append_ret = function(ts,rets){
-  for(curr in currencies){
-    dates = ts[[curr]]$Date
-    ret = rets[[curr]]
-    pos = 1
-    for(d in dates){
-      lookup = which(ret[,1]== as.Date(d,lubridate::origin))
-      ts[[curr]][pos,'Ret'] = ret$Ret[lookup]
-      pos = pos + 1
-    }
-  }
-  return(ts)
-}
-
-
-daily_data = append_target(daily_vols)
-weekly_data = append_target(weekly_vols)
-daily_data = append_ret(daily_data,daily_rets)
-weekly_data = append_ret(weekly_data,weekly_rets)
-
-```
-
+#SVM implementation
 
 Linear SVM Helper Functions
 ```{r,tidy=TRUE,warning=FALSE}
