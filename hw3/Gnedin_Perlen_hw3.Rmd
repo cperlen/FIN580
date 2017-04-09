@@ -233,8 +233,6 @@ if(!load_data_from_scratch)  {
   load("weekly_data.Rdata")
   load("daily_data.Rdata")
   load("currencies.RData")
-  load('daily_vols.Rdata')
-  
 }
 ```
 
