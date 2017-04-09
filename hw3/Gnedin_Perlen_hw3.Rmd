@@ -218,10 +218,11 @@ if(load_data_from_scratch){
   weekly_data = append_target(weekly_vols)
   daily_data = append_ret(daily_data,daily_rets)
   weekly_data = append_ret(weekly_data,weekly_rets)
-  labels = append_label(daily_data)
+  daily_data = append_label(daily_data)
+  weekly_data = append_label(weekly_data)
   
-  save(weekly_rets, file = "weekly_data.Rdata")
-  save(daily_rets,file = "daily_data.Rdata")
+  save(weekly_data, file = "weekly_data.Rdata")
+  save(daily_data,file = "daily_data.Rdata")
   save(currencies, file = "currencies.RData")
   
   
@@ -232,15 +233,9 @@ if(!load_data_from_scratch)  {
   load("weekly_data.Rdata")
   load("daily_data.Rdata")
   load("currencies.RData")
+  load('daily_vols.Rdata')
   
 }
-<<<<<<< HEAD
-
-#Get ylabels to be used throughout
-
-
-=======
->>>>>>> e0bd52652a31c22cc9146dfce7ec6de87c02c0d9
 ```
 
 
