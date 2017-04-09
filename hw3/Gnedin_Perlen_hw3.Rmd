@@ -30,7 +30,6 @@ library(BioPhysConnectoR)
 #Set seed
 set.seed(1560)
 
-#Test
 ```
 
 ---
@@ -38,13 +37,13 @@ set.seed(1560)
 Reading in and preprocessing data
 ```{r, warning=FALSE,tidy=TRUE, message=FALSE }
 
-setwd("~/Desktop/FIN580/data")
-load_data_from_scratch = F
+#setwd("~/Desktop/FIN580/data")
+setwd("~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/data") #Nina's
+load_data_from_scratch = T
 
 if(load_data_from_scratch){
   file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
   currencies = strsplit(file_names[1:(length(file_names)-1)],'USD.csv')
-  
   labels = read.csv(file_names[length(file_names)],header = T)
   labels[,1] = as.Date(labels[,1], origin = lubridate::origin )
   labels[nrow(labels),2] = 0 #not training on last day because do not have data to test fit
@@ -191,6 +190,9 @@ if(!load_data_from_scratch)  {
   load("weekly_rets.RData")
   load("currencies.RData")
 }
+
+#Get ylabels to be used throughout
+
 
 ```
 
