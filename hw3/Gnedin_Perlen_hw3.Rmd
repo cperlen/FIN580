@@ -221,9 +221,18 @@ if(load_data_from_scratch){
   daily_data = append_label(daily_data)
   weekly_data = append_label(weekly_data)
   
+  #remove JPY and SEK
+  currencies = currencies[-6] 
+  currencies = currencies[-8]
+  weekly_data = weekly_data[-6]
+  weekly_data = weekly_data[-8]
+  daily_data = daily_data[-6]
+  daily_data = daily_data[-8]
+  
   save(weekly_data, file = "weekly_data.Rdata")
   save(daily_data,file = "daily_data.Rdata")
   save(currencies, file = "currencies.RData")
+  
   
   
   
@@ -242,64 +251,19 @@ if(!load_data_from_scratch)  {
 Linear SVM Helper Functions
 ```{r,tidy=TRUE,warning=FALSE}
 
-#helper functions
-get_labels=function(ts,delta,index){
-  lag = ts$Vol
-  realized = ts$Target
-  
-  labels = sapply(index, function(i){ 
-    plus_diff = abs(realized[i] - lag[i]*(1+delta))
-    minus_diff = abs(realized[i] - lag[i]*(1-delta))
-    if(minus_diff <= plus_diff){
-      return(-1)
+get_mse = function(data, pred_labels,indicies,delta){
+    errors = sapply(1:length(pred_labels), function(i) {
+    if (pred_labels[i] == 1){
+      fitted_val = data$Vol[test_indicies[i]] * (1 + delta)
     }
-    return(1)})
-  return(labels)
+    else{
+      fitted_val = data$Vol[test_indicies[i]] * (1 - delta)
+    }
+    return((fitted_val - data$Target[[test_indicies[i]]])^2)
+  })
+  return(mean(errors))
 }
 
-
-
-#fits linear svm, inputs should be of form c('Vol','Ret','maVol','maRet') etc, where '' is any colname of data
-svm_linear = function(data,inputs,delta){ 
-  
-
-  #splits into train and test
-  train_indicies = which(data$Train == 1)
-  test_indicies = which(data$Train == 0) 
-  
-  #generates model data sets for training and prediction
-  train_labels = get_labels(data,delta,train_indicies) #codes +- 1
-  y = as.factor(train_labels)
-  
-  x_train = vector("list", length(inputs))
-  predictors = vector("list", length(inputs))
-  names(x_train) = inputs
-  names(predictors) = inputs
-  
-  for(input in inputs){
-    x_train[[input]] = data[train_indicies,input]
-    predictors[[input]] = data[test_indicies,input]
-  }
-  
-  x_train = as.data.frame(x_train)
-  predictors = as.data.frame(predictors)
-  df = x_train
-  df['Labels'] = y
-
-#tune and fit svm 
-  
-  svm_model = svm(as.factor(df$Labels) ~., data=df) #faster to not tune, can tune in future
-  #svm_tune = tune(svm, train.x= x_train, train.y= as.factor(df$Labels), kernel='linear', ranges=list(cost=10^(-1:1), gamma=c(.5,1,2)))
-  #svm_model = svm(as.factor(df$Labels) ~ ., data=df,kernel='linear', cost = svm_tune$best.model$cost, gamma = svm_tune$best.model$gamma,type = "C-classification")
-  
-#svm to predict
-  pred_test_labels = as.numeric(predict(svm_model, predictors))
-  pred_test_labels[which(pred_test_labels == 1)] = -1 #outputs as factor so need to invert 
-  pred_test_labels[which(pred_test_labels == 2)] = 1
-  realized_labels = get_labels(data,delta,test_indicies)
-  acc = length(which(pred_test_labels == realized_labels))/length(pred_test_labels) #compute classification accuracy
-  
-    
   #regression model
   test_predictions = sapply(1:length(pred_test_labels), function(i) {
     if (pred_test_labels[i] == 1){
@@ -310,7 +274,60 @@ svm_linear = function(data,inputs,delta){
     }
   })
   
+
+
+
+
+#fits svm, inputs should be of form c('Vol','Ret','maVol','maRet') etc, ie any colname of data
+svm_utility = function(data,inputs,delta,kernelType){ 
+
+  #splits into train and test
+  train_indicies = which(data$Train == 1)
+  test_indicies = which(data$Train == 0) 
+  
+  #generates model data sets for training and prediction
+  train_labels = data$'Y(t)'[train_indicies]
+  
+  y = as.factor(train_labels)
+  
+  x_train = vector("list", length(inputs))
+  x_test = vector("list", length(inputs))
+  names(x_train) = inputs
+  names(x_test) = inputs
+  
+  for(input in inputs){
+    x_train[[input]] = data[train_indicies,input]
+    x_test[[input]] = data[test_indicies,input]
+  }
+  
+  x_train = as.data.frame(x_train)
+  x_test = as.data.frame(predictors)
+  df = x_train
+  df['Labels'] = y
+
+#tune and fit svm 
+  
+  svm_model = svm(as.factor(df$Labels) ~., data=df, kernel = kernelType) #faster to not tune, can tune in future
+  #svm_tune = tune(svm, train.x= x_train, train.y= as.factor(df$Labels), kernel='linear', ranges=list(cost=10^(-1:1), gamma=c(.5,1,2)))
+  #svm_model = svm(as.factor(df$Labels) ~ ., data=df,kernel='linear', cost = svm_tune$best.model$cost, gamma = svm_tune$best.model$gamma,type = "C-classification")
+  
+#svm performance on training data
+  pred_train_labels = as.numeric(predict(svm_model, x_train))
+  pred_train_labels[which(pred_train_labels == 1)] = -1 #outputs as factor so need to invert 
+  pred_train_labels[which(pred_train_labels == 2)] = 1
+  train_acc = length(which(pred_train_labels == train_labels))/length(train_labels)
+    
+#svm performance on testing data
+  pred_test_labels = as.numeric(predict(svm_model, x_test))
+  pred_test_labels[which(pred_test_labels == 1)] = -1 #outputs as factor so need to invert 
+  pred_test_labels[which(pred_test_labels == 2)] = 1
+  test_acc = length(which(pred_test_labels == train_labels = data$'Y(t)'[test_indicies]))/length(pred_test_labels) #compute classification accuracy
+  
+    
+#CODE MSE FUNCTION
   #return mse,acc
+  results = data.frame('Train_Mse' = numeric(), 'Train_Acc' = numeric(), 'Test_Mse' = numeric(), 'Test_Acc' = numeric())
+  
   return(c(mean( (test_predictions - data$Target[test_indicies])^2),acc))
 }  
 
