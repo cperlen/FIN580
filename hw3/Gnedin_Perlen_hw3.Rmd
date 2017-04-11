@@ -38,7 +38,7 @@ set.seed(1560)
 
 #setwd("~/Desktop/FIN580/data")
 setwd("~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/data") #Nina's
-load_data_from_scratch = T
+load_data_from_scratch = F
 
 if(load_data_from_scratch){
   file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
@@ -133,10 +133,11 @@ if(load_data_from_scratch){
     x = rets_5min[[curr]]
     c_dates = dates_by_curr[[curr]]
     
-    vols = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
+    vols = data.frame(Date=as.Date(character()), Vol = numeric(), Train = numeric() )
     pos = 1
-    for(i in 5:length(c_dates)){
-      indicies = unique(unlist(sapply((i-4):i, function(j) { which(x[,1] == c_dates[j])})))
+    i = 1
+    while(i <= length(c_dates)-5){
+      indicies = unique(unlist(sapply(i:(i+4), function(j) { which(x[,1] == c_dates[j])})))
       if(length(indicies) != 0){
         rets = x[indicies,2]
         vol = sqrt(50) * sd(rets) #annualize volatility
@@ -145,6 +146,7 @@ if(load_data_from_scratch){
           pos = pos + 1
         }
       }
+      i = i + 5 
     }
     return(vols)
   }
@@ -160,14 +162,16 @@ if(load_data_from_scratch){
     
     rets = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
     pos = 1
-    for(i in 5:length(c_dates)){
-      indicies = unique(unlist(sapply((i-4):i, function(j) { which(x[,1] == c_dates[j])})))
+    i = 1
+    while(i <= length(c_dates)-5){
+      indicies = unique(unlist(sapply(i:(i+4), function(j) { which(x[,1] == c_dates[j])})))
       n = length(indicies)
       if(n != 0){
         ret = log(x[indicies[n],2] / x[indicies[1],2] )#last day close divided first day open
         rets[pos,] = list(c_dates[i],ret, labels[which(labels$Date == c_dates[i]),2]) 
         pos = pos + 1
       }
+      i = i + 5
     }
     return(rets)
   }
@@ -248,88 +252,103 @@ if(!load_data_from_scratch)  {
 
 #SVM implementation
 
-Linear SVM Helper Functions
+SVM Helper Functions
 ```{r,tidy=TRUE,warning=FALSE}
 
+#returns the mse from the regression fit using the labels predicted by the svm
 get_mse = function(data, pred_labels,indicies,delta){
-    errors = sapply(1:length(pred_labels), function(i) {
+    sq_errors = sapply(1:length(pred_labels), function(i) {
     if (pred_labels[i] == 1){
-      fitted_val = data$Vol[test_indicies[i]] * (1 + delta)
+      fitted_val = data$Vol[indicies[i]] * (1 + delta)
     }
     else{
-      fitted_val = data$Vol[test_indicies[i]] * (1 - delta)
+      fitted_val = data$Vol[indicies[i]] * (1 - delta)
     }
-    return((fitted_val - data$Target[[test_indicies[i]]])^2)
+    return((fitted_val - data$Target[[indicies[i]]])^2)
   })
-  return(mean(errors))
+  return(mean(sq_errors))
 }
 
-  #regression model
-  test_predictions = sapply(1:length(pred_test_labels), function(i) {
-    if (pred_test_labels[i] == 1){
-      return(data$Vol[test_indicies[i]] * (1 + delta)) 
-    }
-    else{
-      return(data$Vol[test_indicies[i]] * (1 - delta)) 
-    }
-  })
-  
 
-
-
-
-#fits svm, inputs should be of form c('Vol','Ret','maVol','maRet') etc, ie any colname of data
-svm_utility = function(data,inputs,delta,kernelType){ 
-
-  #splits into train and test
+#inputs is a list of the colnames of data you wish to use eg c('Vol'), kernelType should be either 'radial' or 'linear', k is
+cross_validate_svm = function(data,inputs,kernelType){
   train_indicies = which(data$Train == 1)
-  test_indicies = which(data$Train == 0) 
+  test_indicies = which(data$Train == 0)
   
-  #generates model data sets for training and prediction
-  train_labels = data$'Y(t)'[train_indicies]
-  
-  y = as.factor(train_labels)
-  
+  #set up SVM
+  y = as.factor(data$'Y(t)'[train_indicies])
   x_train = vector("list", length(inputs))
-  x_test = vector("list", length(inputs))
   names(x_train) = inputs
+  x_test = vector("list", length(inputs))
   names(x_test) = inputs
-  
   for(input in inputs){
     x_train[[input]] = data[train_indicies,input]
     x_test[[input]] = data[test_indicies,input]
   }
   
   x_train = as.data.frame(x_train)
-  x_test = as.data.frame(predictors)
+  x_test = as.data.frame(x_test)
   df = x_train
   df['Labels'] = y
 
-#tune and fit svm 
+#cross-validate svm to find optimal gamma, C
   
-  svm_model = svm(as.factor(df$Labels) ~., data=df, kernel = kernelType) #faster to not tune, can tune in future
-  #svm_tune = tune(svm, train.x= x_train, train.y= as.factor(df$Labels), kernel='linear', ranges=list(cost=10^(-1:1), gamma=c(.5,1,2)))
-  #svm_model = svm(as.factor(df$Labels) ~ ., data=df,kernel='linear', cost = svm_tune$best.model$cost, gamma = svm_tune$best.model$gamma,type = "C-classification")
-  
-#svm performance on training data
-  pred_train_labels = as.numeric(predict(svm_model, x_train))
-  pred_train_labels[which(pred_train_labels == 1)] = -1 #outputs as factor so need to invert 
-  pred_train_labels[which(pred_train_labels == 2)] = 1
-  train_acc = length(which(pred_train_labels == train_labels))/length(train_labels)
+  gamma_range = c(1)
+  if(kernelType == 'radial'){
+   gamma_range = c(.1,.5,1,2) 
+  }
+  svm_tune = tune(svm, train.x= x_train, train.y= as.factor(df$Labels), kernel=kernelType, ranges=list(cost=10^(-2:1), gamma=gamma_range))
+  C_opt = svm_tune$best.model$cost
+  gamma_opt = svm_tune$best.model$gamma
+  svm_model = svm(as.factor(df$Labels) ~ ., data=df,kernel=kernelType, cost = C_opt, gamma = gamma_opt) 
     
-#svm performance on testing data
-  pred_test_labels = as.numeric(predict(svm_model, x_test))
-  pred_test_labels[which(pred_test_labels == 1)] = -1 #outputs as factor so need to invert 
-  pred_test_labels[which(pred_test_labels == 2)] = 1
-  test_acc = length(which(pred_test_labels == train_labels = data$'Y(t)'[test_indicies]))/length(pred_test_labels) #compute classification accuracy
+  #predict on training data
+  fitted_tr_labels = as.numeric(predict(svm_model,x_train)) #predict entire training set
+  fitted_tr_labels[which(fitted_tr_labels == 1)] = -1 #outputs as factor so need to invert 
+  fitted_tr_labels[which(fitted_tr_labels == 2)] = 1
   
-    
-#CODE MSE FUNCTION
-  #return mse,acc
-  results = data.frame('Train_Mse' = numeric(), 'Train_Acc' = numeric(), 'Test_Mse' = numeric(), 'Test_Acc' = numeric())
+  #find best delta for the training data with fitted model
+  y_vals = data$Target[train_indicies] - data$Vol[train_indicies]
+  regressors = fitted_tr_labels * data$Vol[train_indicies]
+  ls_fit = lm(y_vals ~ regressors + 0)
+  delta_opt = ls_fit$coefficients[1] #delta is non-negative, however we will show results in both cases
+  delta_pos = max(delta_opt,0)
+
+  #use delta_opt to compute train and test mses
+  train_mse_opt = get_mse(data, fitted_tr_labels,train_indicies,delta_opt)
+  train_mse_pos = get_mse(data, fitted_tr_labels,train_indicies,delta_pos)
   
-  return(c(mean( (test_predictions - data$Target[test_indicies])^2),acc))
-}  
+  #accuracy of fit, for sanity check, make sure > 50%
+  train_acc = length(which(fitted_tr_labels == data$'Y(t)'[train_indicies]))/length(fitted_tr_labels)
+  
+  #predict on test
+  fitted_test_labels = as.numeric(predict(svm_model,x_test)) #predict entire training set
+  fitted_test_labels[which(fitted_test_labels == 1)] = -1 #outputs as factor so need to invert 
+  fitted_test_labels[which(fitted_test_labels == 2)] = 1
+
+  #compute test_mse
+  test_mse_opt = get_mse(data, fitted_test_labels,test_indicies,delta_opt)
+  test_mse_pos = get_mse(data, fitted_test_labels,test_indicies,delta_pos)
+  
+  #accuracy of fit
+  test_acc = length(which(fitted_test_labels == data$'Y(t)'[test_indicies]))/length(fitted_test_labels)
+  
+  #output results'
+  results = data.frame('C' = numeric(),'Gamma' = numeric(),'Train_Acc' = numeric(),'Test_Acc' = numeric(),'Delta_opt' = numeric(), 'Opt_Train_MSE' = numeric(), 'Opt_Test_Mse' = numeric(),'Delta' = numeric(),'Train_MSE' = numeric(), 'Test_MSE' = numeric())
+  results[1,] = list(C_opt, gamma_opt,train_acc,test_acc,delta_opt,train_mse_opt,test_mse_opt,delta_pos,train_mse_pos,train_acc)
+  return(results)
+}
+
+run_svm_regression = function(data,inputs,kernelType){
+  results = data.frame('Currency' = character(), 'C' = numeric(), 'Gamma' = numeric() , 'train_Accuracy' = numeric(), 'test_Accuracy' = numeric(), 'train_MSE' = numeric(),'Delta_opt' = numeric(), 'Opt_Train_MSE' = numeric(), 'Opt_Test_Mse' = numeric(),  'Delta' = numeric(),'test_MSE' = numeric(), stringsAsFactors = F)
+  pos = 1
+  for(curr in currencies){ 
+    temp_results = cross_validate_svm(data[[curr]],inputs,kernelType)
+    results[pos,] = list(curr,temp_results[1],temp_results[2],temp_results[3],temp_results[4],temp_results[5],temp_results[6],temp_results[7],temp_results[8],temp_results[9],temp_results[10]) 
+    pos = pos + 1
+  }
+  return(results) 
+}
 
 
 #plotting utility
@@ -374,22 +393,40 @@ get_cummulative_statics = function(results){
 
 
 
-run svm regression for linear predictor of daily data
+run svm regression 
 ```{r,tidy=TRUE,warning=FALSE}
 
+daily_1d_results_linear = run_svm_regression(daily_data,c('Vol'), 'linear')
+daily_1d_results_rbf = run_svm_regression(daily_data,c('Vol'),'radial') 
+daily_2d_results_linear = run_svm_regression(daily_data,c('Vol','Ret'), 'linear')
+daily_2d_results_rbf = run_svm_regression(daily_data,c('Vol','Ret'), 'radial')
 
+weekly_1d_results_linear = run_svm_regression(weekly_data,c('Vol'), 'linear')
+weekly_1d_results_rbf = run_svm_regression(weekly_data,c('Vol'),'radial') 
+weekly_2d_results_linear = run_svm_regression(weekly_data,c('Vol','Ret'), 'linear')
+wekly_2d_results_rbf = run_svm_regression(weekly_data,c('Vol','Ret'), 'radial')
+```
+
+
+inputs,kernelType)
+  
 delta_grid = seq(.001,.051,.05/20)
-daily_1d_results = data.frame(Currency = character(), Delta = numeric(), MSE = numeric(), Accuracy = numeric(), stringsAsFactors = F)	
+daily_1d_results_rbf = run_svm_regression(daily_data,c('Vol'),delta_grid,'radial')
 
 
 pos = 1
 for(curr in currencies){
   for(delta in delta_grid){
-    results = svm_linear(daily_data[[curr]],c('Vol'),delta)
-    daily_1d_results[pos,] = list(curr,delta,results[1],results[2]) 
+    results = svm_utility(daily_data[[curr]],c('Vol'),delta,'linear')
+    daily_1d_results[pos,] = list(curr,delta,results[1],results[2], results[3], results[4]) 
     pos = pos + 1
   }
 }
+
+
+
+
+
 
 #plotting
 setwd("~/Desktop/FIN580/hw3/Plots/1D")  #directory where you want to print the plots
@@ -420,7 +457,7 @@ weekly_1d_results = data.frame(Currency = character(), Delta = numeric(), MSE = 
 pos = 1
 for(curr in currencies){
   for(delta in delta_grid){
-    results = svm_linear(weekly_data[[curr]],c('Vol'),delta)
+    results = svm_utility(weekly_data[[curr]],c('Vol'),delta)
     weekly_1d_results[pos,] = list(curr,delta,results[1],results[2]) 
     pos = pos + 1
   }

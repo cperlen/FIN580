@@ -31,42 +31,216 @@ set.seed(1560)
 Read in data. There might some days the price remains constant. You should check the data and delete those days, since the estimate of volatility will be zero.  
 
 Note: You will have to change the paths to read in on your own computer
-```{r,tidy=TRUE}
-#Get data
-load_data_from_scratch=FALSE
 
-file_names=dir(path="~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/FIN580")
-setwd("~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/FIN580")
-#file_names=dir(path="~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/Data")
-#setwd("~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW 2/Data")
-period=288 #Only using daily vols for this assignment
-
-if(load_data_from_scratch==TRUE){
- for(i in 1:length(file_names)){
-  temp=read.csv(file_names[i],header = TRUE)
-  n=ncol(temp)
-  if(i==1){
-    data=temp[,n]
-  }
-  else{
-    data=cbind(data,temp[,n])
-  }
- } 
   
-#Change data to log returns
-temp=diff(log(data),lag=period)
-data=data[-1,]
-data=temp
+  Reading in and preprocessing data
+```{r, warning=FALSE,tidy=TRUE, message=FALSE }
+
+#setwd("~/Desktop/FIN580/data")
+setwd("~/Desktop/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/data") #Nina's
+load_data_from_scratch = T
+
+if(load_data_from_scratch){
+  file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
+  currencies = strsplit(file_names[1:(length(file_names)-1)],'USD.csv')
+  labels = read.csv(file_names[length(file_names)],header = T)
+  labels[,1] = as.Date(labels[,1], origin = lubridate::origin )
+  labels[nrow(labels),2] = 0 #not training on last day because do not have data to test fit
+  colnames(labels)[1] = "Date"
+  
+  prices = lapply(file_names[1:length(currencies)], function(x) { 
+    temp = read.csv(x ,header = T)
+    temp = temp[,c("Date","Close")]
+    if(x == "AUDUSD.csv"){
+      temp$Date = as.Date(temp$Date, format = "%m/%d/%y",origin = lubridate::origin) #why it has a different format I have no idea
+    }
+    else{
+      temp$Date = as.Date(temp$Date, format = "%m/%d/%Y",origin = lubridate::origin)
+    }
+    return(temp) })
+  
+  names(prices) = currencies
+  dates = unique(labels[,1])
+  
+  #compute return series
+  get_5min_rets = function(x){
+    tot_rets = data.frame(Date=as.Date(character()), Returns = numeric())
+    pos = 1
+    for(i in 1:length(dates)){
+      indicies = which(x[,1] == dates[i])
+      if(length(indicies) != 0){
+        
+        daily_prices = x[indicies,2]
+        daily_rets = log(daily_prices[2:length(daily_prices)]/daily_prices[1:(length(daily_prices)-1)])
+        len = length(daily_rets)
+        tot_rets[pos:(pos+len-1),] = list(rep(dates[i],length(daily_rets)),daily_rets)
+        pos = pos + len
+      }
+    }
+    return(tot_rets)
+  }
+  
+  rets_5min = lapply(prices, get_5min_rets)
+  
+  get_daily_rets = function(x){
+    rets = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 1:length(dates)){
+      indicies = which(x[,1] == dates[i])
+      len = length(indicies)
+      if(len != 0){
+        ret = log(x[indicies[len],2]/x[indicies[1],2]) #return for the day is log(P_23:55/P_0:00)
+        rets[pos,] = list(dates[i],ret, labels[which(labels$Date == dates[i]),2])
+        pos = pos + 1
+      }
+    }
+    return(rets)
+  }
+  
+  daily_rets = lapply(prices, get_daily_rets)
+  
+  
+  
+  #compute volatility series
+  
+  get_daily_vols = function(x){
+    
+    vols = data.frame(Date=as.Date(character()), Vol = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 1:length(dates)){
+      indicies = which(x[,1] == dates[i])
+      if(length(indicies) != 0){
+        rets = x[indicies,2]
+        vol = sqrt(252) * sd(rets) #annualize volatility
+        if(vol != 0){ #get rid of days during which vol is 0
+          vols[pos,] = list(dates[i],log(vol), labels[which(labels$Date == dates[i]),2])
+          pos = pos + 1
+        }
+      }
+    }
+    return(vols)
+  }
+  
+  daily_vols = lapply(rets_5min,get_daily_vols)
+  
+  
+  #weekly statics
+  dates_by_curr = lapply(daily_vols, function(x){ x$Date}) #which dates have non-zero vols
+  
+  
+  
+  get_weekly_vols = function(curr){
+    x = rets_5min[[curr]]
+    c_dates = dates_by_curr[[curr]]
+    
+    vols = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 5:length(c_dates)){
+      indicies = unique(unlist(sapply((i-4):i, function(j) { which(x[,1] == c_dates[j])})))
+      if(length(indicies) != 0){
+        rets = x[indicies,2]
+        vol = sqrt(50) * sd(rets) #annualize volatility
+        if(vol != 0){ #get rid of days during which vol is 0
+          vols[pos,] = list(c_dates[i],log(vol), labels[which(labels$Date == c_dates[i]),2])
+          pos = pos + 1
+        }
+      }
+    }
+    return(vols)
+  }
+  
+  weekly_vols = lapply(currencies, get_weekly_vols)
+  names(weekly_vols) = currencies
+  
+  
+  
+  get_weekly_rets = function(curr){
+    x = prices[[curr]]
+    c_dates = dates_by_curr[[curr]]
+    
+    rets = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 5:length(c_dates)){
+      indicies = unique(unlist(sapply((i-4):i, function(j) { which(x[,1] == c_dates[j])})))
+      n = length(indicies)
+      if(n != 0){
+        ret = log(x[indicies[n],2] / x[indicies[1],2] )#last day close divided first day open
+        rets[pos,] = list(c_dates[i],ret, labels[which(labels$Date == c_dates[i]),2]) 
+        pos = pos + 1
+      }
+    }
+    return(rets)
+  }
+  
+  weekly_rets = lapply(currencies, get_weekly_rets)
+  names(weekly_rets) = currencies
+  
+  append_target = function(ts){
+    for(curr in currencies){
+      temp = ts[[curr]]
+      len = nrow(ts[[curr]])
+      ts[[curr]] = ts[[curr]][1:(len-1),]
+      ts[[curr]] [,'Target'] = temp[2:len,2] 
+    }
+    return(ts)
+  }
+  
+  append_ret = function(ts,rets){
+    for(curr in currencies){
+      dates = ts[[curr]]$Date
+      ret = rets[[curr]]
+      pos = 1
+      for(d in dates){
+        lookup = which(ret[,1]== as.Date(d,lubridate::origin))
+        ts[[curr]][pos,'Ret'] = ret$Ret[lookup]
+        pos = pos + 1
+      }
+    }
+    return(ts)
+  }
+  
+  append_label = function(ts,rets){
+    for(curr in currencies){
+      series = ts[[curr]]
+      labels = sapply(1:nrow(series),function(i){
+        s = sign(series$Target[i] - series$Vol[i])
+        if(s == 0){ #break ties
+          s = 1
+        }
+        return(s)} )
+      ts[[curr]]['Y(t)'] = labels
+    }
+    return(ts)
+  }
+  
+  
+  daily_data = append_target(daily_vols)
+  weekly_data = append_target(weekly_vols)
+  daily_data = append_ret(daily_data,daily_rets)
+  weekly_data = append_ret(weekly_data,weekly_rets)
+  daily_data = append_label(daily_data)
+  weekly_data = append_label(weekly_data)
+  
+  #remove JPY and SEK
+  currencies = currencies[-6] 
+  currencies = currencies[-8]
+  weekly_data = weekly_data[-6]
+  weekly_data = weekly_data[-8]
+  daily_data = daily_data[-6]
+  daily_data = daily_data[-8]
+  
+  save(weekly_data, file = "weekly_data.Rdata")
+  save(daily_data,file = "daily_data.Rdata")
+  save(currencies, file = "currencies.RData")
 }
 
-
-#Save data to .RData file 
-if(load_data_from_scratch==FALSE){
-  load("data.RData")
+if(!load_data_from_scratch)  {
+  load("weekly_data.Rdata")
+  load("daily_data.Rdata")
+  load("currencies.RData")
 }
-save(data,file="data.RData")
-
 ```
+
 
 Get volatilities, annualize, and take the log. Fix windows.
 ```{r,tidy=TRUE}
