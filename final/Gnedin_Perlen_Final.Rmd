@@ -1,0 +1,285 @@
+---
+title: "FIN580_Final"
+output: pdf_document
+---
+
+#installing needed packages
+```{r, warning=FALSE,tidy=TRUE, message=FALSE }
+#Setup 
+library(xlsx)
+library(forecast)
+library(tseries)
+library(stats)
+library(car)
+library(glmnet)
+library(miscTools)
+library(Metrics)
+library(knitr)
+library(class)
+library(vars)
+library(stargazer)
+library(fGarch)
+
+#Set seed
+set.seed(1560)
+
+```
+---
+  
+Reading in and preprocessing data. Changing Train to be sequential for GARCH modeling.
+```{r, warning=FALSE,tidy=TRUE, message=FALSE }
+
+#setwd("~/Desktop/FIN580/data")
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/data") #Nina's
+load_data_from_scratch = F
+
+if(load_data_from_scratch){
+  file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
+  currencies = strsplit(file_names[1:(length(file_names)-1)],'USD.csv')
+  labels = read.csv(file_names[length(file_names)],header = T)
+  labels[,1] = as.Date(labels[,1], origin = lubridate::origin )
+  labels[nrow(labels),2] = 0 #not training on last day because do not have data to test fit
+  colnames(labels)[1] = "Date"
+  
+  prices = lapply(file_names[1:length(currencies)], function(x) { 
+    temp = read.csv(x ,header = T)
+    temp = temp[,c("Date","Close")]
+    if(x == "AUDUSD.csv"){
+      temp$Date = as.Date(temp$Date, format = "%m/%d/%y",origin = lubridate::origin) #why it has a different format I have no idea
+    }
+    else{
+      temp$Date = as.Date(temp$Date, format = "%m/%d/%Y",origin = lubridate::origin)
+    }
+    return(temp) })
+  
+  names(prices) = currencies
+  dates = unique(labels[,1])
+  
+  #compute return series
+  get_5min_rets = function(x){
+    tot_rets = data.frame(Date=as.Date(character()), Returns = numeric())
+    pos = 1
+    for(i in 1:length(dates)){
+      indicies = which(x[,1] == dates[i])
+      if(length(indicies) != 0){
+        
+        daily_prices = x[indicies,2]
+        daily_rets = log(daily_prices[2:length(daily_prices)]/daily_prices[1:(length(daily_prices)-1)])
+        len = length(daily_rets)
+        tot_rets[pos:(pos+len-1),] = list(rep(dates[i],length(daily_rets)),daily_rets)
+        pos = pos + len
+      }
+    }
+    return(tot_rets)
+  }
+  
+  rets_5min = lapply(prices, get_5min_rets)
+  
+  get_daily_rets = function(x){
+    rets = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 1:length(dates)){
+      indicies = which(x[,1] == dates[i])
+      len = length(indicies)
+      if(len != 0){
+        ret = log(x[indicies[len],2]/x[indicies[1],2]) #return for the day is log(P_23:55/P_0:00)
+        rets[pos,] = list(dates[i],ret, labels[which(labels$Date == dates[i]),2])
+        pos = pos + 1
+      }
+    }
+    return(rets)
+  }
+  
+  daily_rets = lapply(prices, get_daily_rets)
+  
+  
+  
+  #compute volatility series
+  
+  get_daily_vols = function(x){
+    
+    vols = data.frame(Date=as.Date(character()), Vol = numeric(), Train = numeric() )
+    pos = 1
+    for(i in 1:length(dates)){
+      indicies = which(x[,1] == dates[i])
+      if(length(indicies) != 0){
+        rets = x[indicies,2]
+        vol = sqrt(252) * sd(rets) #annualize volatility
+        if(vol != 0){ #get rid of days during which vol is 0
+          vols[pos,] = list(dates[i],log(vol), labels[which(labels$Date == dates[i]),2])
+          pos = pos + 1
+        }
+      }
+    }
+    return(vols)
+  }
+  
+  daily_vols = lapply(rets_5min,get_daily_vols)
+  
+  
+  #weekly statics
+  dates_by_curr = lapply(daily_vols, function(x){ x$Date}) #which dates have non-zero vols
+  
+  
+  
+  get_weekly_vols = function(curr){
+    x = rets_5min[[curr]]
+    c_dates = dates_by_curr[[curr]]
+    
+    vols = data.frame(Date=as.Date(character()), Vol = numeric(), Train = numeric() )
+    pos = 1
+    i = 1
+    while(i <= length(c_dates)-5){
+      indicies = unique(unlist(sapply(i:(i+4), function(j) { which(x[,1] == c_dates[j])})))
+      if(length(indicies) != 0){
+        rets = x[indicies,2]
+        vol = sqrt(50) * sd(rets) #annualize volatility
+        if(vol != 0){ #get rid of days during which vol is 0
+          vols[pos,] = list(c_dates[i],log(vol), labels[which(labels$Date == c_dates[i]),2])
+          pos = pos + 1
+        }
+      }
+      i = i + 5 
+    }
+    return(vols)
+  }
+  
+  weekly_vols = lapply(currencies, get_weekly_vols)
+  names(weekly_vols) = currencies
+  
+  
+  
+  get_weekly_rets = function(curr){
+    x = prices[[curr]]
+    c_dates = dates_by_curr[[curr]]
+    
+    rets = data.frame(Date=as.Date(character()), Ret = numeric(), Train = numeric() )
+    pos = 1
+    i = 1
+    while(i <= length(c_dates)-5){
+      indicies = unique(unlist(sapply(i:(i+4), function(j) { which(x[,1] == c_dates[j])})))
+      n = length(indicies)
+      if(n != 0){
+        ret = log(x[indicies[n],2] / x[indicies[1],2] )#last day close divided first day open
+        rets[pos,] = list(c_dates[i],ret, labels[which(labels$Date == c_dates[i]),2]) 
+        pos = pos + 1
+      }
+      i = i + 5
+    }
+    return(rets)
+  }
+  
+  weekly_rets = lapply(currencies, get_weekly_rets)
+  names(weekly_rets) = currencies
+  
+  append_target = function(ts){
+    for(curr in currencies){
+      temp = ts[[curr]]
+      len = nrow(ts[[curr]])
+      ts[[curr]] = ts[[curr]][1:(len-1),]
+      ts[[curr]] [,'Target'] = temp[2:len,2] 
+    }
+    return(ts)
+  }
+  
+  append_ret = function(ts,rets){
+    for(curr in currencies){
+      dates = ts[[curr]]$Date
+      ret = rets[[curr]]
+      pos = 1
+      for(d in dates){
+        lookup = which(ret[,1]== as.Date(d,lubridate::origin))
+        ts[[curr]][pos,'Ret'] = ret$Ret[lookup]
+        pos = pos + 1
+      }
+    }
+    return(ts)
+  }
+  
+  append_label = function(ts,rets){
+    for(curr in currencies){
+      series = ts[[curr]]
+      labels = sapply(1:nrow(series),function(i){
+        s = sign(series$Target[i] - series$Vol[i])
+        if(s == 0){ #break ties
+          s = 1
+        }
+        return(s)} )
+      ts[[curr]]['Y(t)'] = labels
+    }
+    return(ts)
+  }
+  
+  
+  daily_data = append_target(daily_vols)
+  weekly_data = append_target(weekly_vols)
+  daily_data = append_ret(daily_data,daily_rets)
+  weekly_data = append_ret(weekly_data,weekly_rets)
+  daily_data = append_label(daily_data)
+  weekly_data = append_label(weekly_data)
+  
+  #remove JPY and SEK
+  currencies = currencies[-6] 
+  currencies = currencies[-8]
+  weekly_data = weekly_data[-6]
+  weekly_data = weekly_data[-8]
+  daily_data = daily_data[-6]
+  daily_data = daily_data[-8]
+  
+  save(weekly_data, file = "weekly_data.Rdata")
+  save(daily_data,file = "daily_data.Rdata")
+  save(currencies, file = "currencies.RData")
+  
+  
+  
+  
+}
+
+if(!load_data_from_scratch)  {
+  load("weekly_data.Rdata")
+  load("daily_data.Rdata")
+  load("currencies.RData")
+}
+
+#Changing train to sequential 
+n=nrow(daily_data[[1]])
+new_train=c(rep(1,n*(3/5)),rep(0,n-(n*3/5)+1))
+old_names=colnames(daily_data[[1]])
+names=c(old_names,"S_Train")
+
+daily_data=lapply(seq(1,length(currencies),1), function(i){
+  n=nrow(daily_data[[i]])
+  S_train=c(rep(1,n*(3/5)),rep(0,n-(n*3/5)+1))
+  daily_data[[i]]=cbind(daily_data[[i]],S_train)
+})
+
+weekly_data=lapply(seq(1,length(currencies),1), function(i){
+  n=nrow(weekly_data[[i]])
+  S_train=c(rep(1,n*(3/5)),rep(0,n-(n*3/5)))
+  weekly_data[[i]]=cbind(weekly_data[[i]],S_train)
+})
+
+```
+
+For comparison we will fit a GARCH to compare MSE to our regime splitting method. Here we have a generic garch fit model which returns testing error. 
+```{r,warning=FALSE,tidy=TRUE,message=FALSE}
+#Data type is "daily" or "weekly"
+#And curr_i is the currency index
+#Returns test error
+garch_stats=function(data_type,curr_i){
+  use_data=get(paste(data_type,"_data",sep=""))[[i]]
+  train=use_data[which(use_data[,"S_train"]==1),"Ret"]
+  test=use_data[which(use_data[,"S_train"]==0),"Vol"]
+  model=garchFit(formula=~garch(1,1),data=train,verbose=FALSE)
+  pred_y=predict(model,n.ahead=length(test))$standardDeviation
+  return(mse(pred_y),test)
+}
+
+
+
+
+
+
+
+
+```
