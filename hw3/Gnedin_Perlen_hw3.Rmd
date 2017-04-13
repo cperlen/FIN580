@@ -335,12 +335,12 @@ cross_validate_svm = function(data,inputs,kernelType){
   
   #output results'
   results = data.frame('C' = numeric(),'Gamma' = numeric(),'Train_Acc' = numeric(),'Test_Acc' = numeric(),'Delta_opt' = numeric(), 'Opt_Train_MSE' = numeric(), 'Opt_Test_Mse' = numeric(),'Delta' = numeric(),'Train_MSE' = numeric(), 'Test_MSE' = numeric())
-  results[1,] = list(C_opt, gamma_opt,train_acc,test_acc,delta_opt,train_mse_opt,test_mse_opt,delta_pos,train_mse_pos,train_acc)
+  results[1,] = list(C_opt, gamma_opt,train_acc,test_acc,delta_opt,train_mse_opt,test_mse_opt,delta_pos,train_mse_pos,test_mse_pos)
   return(results)
 }
 
 run_svm_regression = function(data,inputs,kernelType){
-  results = data.frame('Currency' = character(), 'C' = numeric(), 'Gamma' = numeric() , 'train_Accuracy' = numeric(), 'test_Accuracy' = numeric(), 'train_MSE' = numeric(),'Delta_opt' = numeric(), 'Opt_Train_MSE' = numeric(), 'Opt_Test_Mse' = numeric(),  'Delta' = numeric(),'test_MSE' = numeric(), stringsAsFactors = F)
+  results = data.frame('Currency' = character(), 'C' = numeric(), 'Gamma' = numeric() , 'train_Accuracy' = numeric(), 'test_Accuracy' = numeric(), 'Delta_opt' = numeric(), 'Opt_Train_MSE' = numeric(), 'Opt_Test_Mse' = numeric(),  'Delta' = numeric(), 'train_MSE' = numeric(),'test_MSE' = numeric(), stringsAsFactors = F)
   pos = 1
   for(curr in currencies){ 
     temp_results = cross_validate_svm(data[[curr]],inputs,kernelType)
@@ -404,486 +404,243 @@ daily_2d_results_rbf = run_svm_regression(daily_data,c('Vol','Ret'), 'radial')
 weekly_1d_results_linear = run_svm_regression(weekly_data,c('Vol'), 'linear')
 weekly_1d_results_rbf = run_svm_regression(weekly_data,c('Vol'),'radial') 
 weekly_2d_results_linear = run_svm_regression(weekly_data,c('Vol','Ret'), 'linear')
-wekly_2d_results_rbf = run_svm_regression(weekly_data,c('Vol','Ret'), 'radial')
-```
-
-
-inputs,kernelType)
-  
-delta_grid = seq(.001,.051,.05/20)
-daily_1d_results_rbf = run_svm_regression(daily_data,c('Vol'),delta_grid,'radial')
-
-
-pos = 1
-for(curr in currencies){
-  for(delta in delta_grid){
-    results = svm_utility(daily_data[[curr]],c('Vol'),delta,'linear')
-    daily_1d_results[pos,] = list(curr,delta,results[1],results[2], results[3], results[4]) 
-    pos = pos + 1
-  }
-}
-
-
-
-
-
-
-#plotting
-setwd("~/Desktop/FIN580/hw3/Plots/1D")  #directory where you want to print the plots
-plot_results(daily_1d_results,'Linear 1-dim SVM Daily Vol ')
-
-
-#cummulative results
-temp = get_cummulative_statics(daily_1d_results)
-daily_1d_cum_mse = as.data.frame(cbind(temp$Delta, temp$MSE))
-names(daily_1d_cum_mse) = c('Delta','MSE')
-daily_1d_cum_acc = as.data.frame(cbind(temp$Delta, temp$Accuracy))
-names(daily_1d_cum_acc) = c('Delta','Accuracy')
-
-rm(temp)
-
+weekly_2d_results_rbf = run_svm_regression(weekly_data,c('Vol','Ret'), 'radial')
 
 ```
 
 
+svm regressions involving moving average
+```{r}
 
-
-run svm regression for linear predictor of weekly data
-```{r, tidy = T, warnings = F}
-
-weekly_1d_results = data.frame(Currency = character(), Delta = numeric(), MSE = numeric(), Accuracy = numeric(), stringsAsFactors = F)	
-
-
-pos = 1
-for(curr in currencies){
-  for(delta in delta_grid){
-    results = svm_utility(weekly_data[[curr]],c('Vol'),delta)
-    weekly_1d_results[pos,] = list(curr,delta,results[1],results[2]) 
-    pos = pos + 1
+#appends moving average over p vols and q rets
+append_moving_avg = function(ts,p,q){
+  if(q != 0){
+    m_avg = data.frame('Date'=as.Date(character()), 'Vol' = numeric(), 'Train' = numeric(), 'Target' = numeric(), 'Ret' = numeric(), 'Y(t)' = numeric(), 'maVol' = numeric(),  maRet = numeric())
+    pos = 1
+    start = max(p,q)
+    for(i in start:nrow(ts)){
+      avgVol = mean(ts[(i-p+1):i,'Vol'])
+      avgRet = mean(ts[(i-q+1):i,'Ret'])
+      m_avg[pos,] = list(as.Date(ts[i,'Date']), ts[i,'Vol'], ts[i,'Train'], ts[i,'Target'], ts[i,'Ret'], ts[i,'Y(t)'],avgVol, avgRet)
+      pos = pos + 1
+    }
   }
-}
-
-#plotting
-plot_results(weekly_1d_results,'Linear 1-dim SVM Daily Vol ')
-
-
-#cummulative results
-temp = get_cummulative_statics(weekly_1d_results)
-weekly_1d_cum_mse = as.data.frame(cbind(temp$Delta, temp$MSE))
-names(weekly_1d_cum_mse) = c('Delta','MSE')
-weekly_1d_cum_acc = as.data.frame(cbind(temp$Delta, temp$Accuracy))
-names(weekly_1d_cum_acc) = c('Delta','Accuracy')
-
-rm(temp)
-
-
-```
-
-
-
-
-
-#Two-dimensional SVM
-
-Daily data
-```{r,tidy=TRUE,warning=FALSE}
-
-daily_2d_results = data.frame(Currency = character(), Delta = numeric(), MSE = numeric(), Accuracy = numeric(), stringsAsFactors = F)	
-
-pos = 1
-for(curr in currencies){
-  for(delta in delta_grid){
-    results = svm_linear(daily_data[[curr]],c('Vol','Ret'),delta)
-    daily_2d_results[pos,] = list(curr,delta,results[1],results[2]) 
-    pos = pos + 1
+  else{
+    m_avg = data.frame('Date'=as.Date(character()), 'Vol' = numeric(), 'Train' = numeric(), 'Target' = numeric(), 'Ret' = numeric(), 'Y(t)' = numeric(), 'maVol' = numeric())
+    pos = 1
+    start = max(p,q)
+    for(i in start:nrow(ts)){
+      avgVol = mean(ts[(i-p+1):i,'Vol'])
+      m_avg[pos,] = list(as.Date(ts[i,'Date']), ts[i,'Vol'], ts[i,'Train'], ts[i,'Target'], ts[i,'Ret'], ts[i,'Y(t)'],avgVol)
+      pos = pos + 1
+    }
   }
-}
-
-#plotting
-setwd("~/Desktop/FIN580/hw3/Plots/2D")  #directory where you want to print the plots
-plot_results(daily_2d_results,'2-Dim SVM Daily Vol ')
-
-
-#cummulative results
-temp = get_cummulative_statics(daily_2d_results)
-daily_2d_cum_mse = as.data.frame(cbind(temp$Delta, temp$MSE))
-names(daily_2d_cum_mse) = c('Delta','MSE')
-daily_2d_cum_acc = as.data.frame(cbind(temp$Delta, temp$Accuracy))
-names(daily_2d_cum_acc) = c('Delta','Accuracy')
-
-rm(temp)
-```
-
-
-
-
-Weekly data
-```{r,tidy=TRUE,warning=FALSE}
-weekly_2d_results = data.frame(Currency = character(), Delta = numeric(), MSE = numeric(), Accuracy = numeric(), stringsAsFactors = F)	
-
-pos = 1
-for(curr in currencies){
-  for(delta in delta_grid){
-    results = svm_linear(weekly_data[[curr]],c('Vol','Ret'),delta)
-    weekly_2d_results[pos,] = list(curr,delta,results[1],results[2]) 
-    pos = pos + 1
-  }
-}
-
-#plotting
-setwd("~/Desktop/FIN580/hw3/Plots/2D")  #directory where you want to print the plots
-plot_results(weekly_2d_results,'2-Dim SVM Weekly Vol ')
-
-
-#cummulative results
-temp = get_cummulative_statics(weekly_2d_results)
-weekly_2d_cum_mse = as.data.frame(cbind(temp$Delta, temp$MSE))
-names(weekly_2d_cum_mse) = c('Delta','MSE')
-weekly_2d_cum_acc = as.data.frame(cbind(temp$Delta, temp$Accuracy))
-names(weekly_2d_cum_acc) = c('Delta','Accuracy')
-
-rm(temp)
-
-```
-
-
-
-
-#Moving Average Volatility
-```{r,tidy=TRUE,warning=FALSE}
-
-
-#Helper function to compute E_p as defined in problem set
-
-
-append_moving_avg = function(ts,p){
-  m_avg = data.frame(Date=as.Date(character()), Vol = numeric(), Train = numeric(), Target = numeric(), Ret = numeric(), maVol = numeric(),  maRet = numeric())
-  pos = 1
-  for(i in p:(nrow(ts)-1)){
-    avgVol = mean(ts[(i-p+1):i,'Vol'])
-    avgRet = mean(ts[(i-p+1):i,'Ret'])
-    m_avg[pos,] = list(as.Date(ts[i,'Date']), ts[i,'Vol'], ts[i,'Train'], ts[i,'Target'], ts[i,'Ret'], avgVol, avgRet)
-    pos = pos + 1
-  }
+  colnames(m_avg)[1:6] = colnames(daily_data[['AUD']])
   return(m_avg)
 }
 
-```
-
-
-
-Daily data
-
-```{r,tidy=TRUE,warning=FALSE}
-setwd("~/Desktop/FIN580/hw3/Plots/MA")
-
-look_back = c(3,5,10)
-
-daily_lookback_1d_mse = vector("list", length(currencies))
-daily_lookback_1d_acc = vector("list", length(currencies))
-names(daily_lookback_1d_mse) = currencies
-names(daily_lookback_1d_acc) = currencies
-
-for(curr in currencies){
-  daily_lookback_1d_mse[[curr]] = matrix(nrow = length(look_back), ncol = length(delta_grid))
-  daily_lookback_1d_acc[[curr]] = matrix(nrow = length(look_back), ncol = length(delta_grid))
-  for(i in 1:length(look_back)){
-    ts = append_moving_avg(daily_data[[curr]],look_back[i]) 
-    for(j in 1:length(delta_grid)){
-    results = svm_linear(ts,c('maVol'),delta_grid[j]) 
-    daily_lookback_1d_mse[[curr]][i,j] = results[1]
-    daily_lookback_1d_acc[[curr]][i,j] = results[2]
-    }
-  }
-}
-
-
-```
-
-
-
-Weekly data
-
-```{r,tidy=TRUE,warning=FALSE}
-
-weekly_lookback_1d_mse = vector("list", length(currencies))
-weekly_lookback_1d_acc = vector("list", length(currencies))
-names(weekly_lookback_1d_mse) = currencies
-names(weekly_lookback_1d_acc) = currencies
-
-for(curr in currencies){
-  weekly_lookback_1d_mse[[curr]] = matrix(nrow = length(look_back), ncol = length(delta_grid))
-  weekly_lookback_1d_acc[[curr]] = matrix(nrow = length(look_back), ncol = length(delta_grid))
-  for(i in 1:length(look_back)){
-    ts = append_moving_avg(weekly_data[[curr]],look_back[i]) 
-    for(j in 1:length(delta_grid)){
-    results = svm_linear(ts,c('maVol'),delta_grid[j]) 
-    weekly_lookback_1d_mse[[curr]][i,j] = results[1]
-    weekly_lookback_1d_acc[[curr]][i,j] = results[2]
-    }
-  }
-}
-
-
-```
-
-
-
-#Moving Average : Two Dimensional
-
-Daily data
-
-```{r,tidy=TRUE,warning=FALSE}
-
-look_back = c(3,5,10)
-
-daily_lookback_2d_mse = vector("list", length(currencies))
-daily_lookback_2d_acc = vector("list", length(currencies))
-names(daily_lookback_1d_mse) = currencies
-names(daily_lookback_1d_acc) = currencies
-
-for(curr in currencies){
-  daily_lookback_2d_mse[[curr]] = matrix(nrow = length(look_back), ncol = length(delta_grid))
-  daily_lookback_2d_acc[[curr]] = matrix(nrow = length(look_back), ncol = length(delta_grid))
-  for(i in 1:length(look_back)){
-    ts = append_moving_avg(daily_data[[curr]],look_back[i]) 
-    for(j in 1:length(delta_grid)){
-    results = svm_linear(ts,c('maVol', 'maRet'),delta_grid[j]) 
-    daily_lookback_2d_mse[[curr]][i,j] = results[1]
-    daily_lookback_2d_acc[[curr]][i,j] = results[2]
-    }
-  }
-}
-
-
-```
-
-
-
-Weekly data
-
-```{r,tidy=TRUE,warning=FALSE}
-
-weekly_lookback_2d_mse = vector("list", length(currencies))
-weekly_lookback_2d_acc = vector("list", length(currencies))
-names(weekly_lookback_2d_mse) = currencies
-names(weekly_lookback_2d_acc) = currencies
-
-for(curr in currencies){
-  weekly_lookback_2d_mse[[curr]] = matrix(nrow = length(look_back), ncol = length(delta_grid))
-  weekly_lookback_2d_acc[[curr]] = matrix(nrow = length(look_back), ncol = length(delta_grid))
-  for(i in 1:length(look_back)){
-    ts = append_moving_avg(weekly_data[[curr]],look_back[i]) 
-    for(j in 1:length(delta_grid)){
-    results = svm_linear(ts,c('maVol','maRet'),delta_grid[j]) 
-    weekly_lookback_2d_mse[[curr]][i,j] = results[1]
-    weekly_lookback_2d_acc[[curr]][i,j] = results[2]
-    }
-  }
-}
-
-
-```
-
-
-Diagnostics for multidimensional problems
-```{r,tidy = TRUE}
-
-
-
-#table of cross currency optimal mses and which p and delta values generated them 
-
-
-
-#diagonsitics for multidimensional problems
-oneD_Ep_results = matrix(nrow = 6, ncol = length(currencies))
-colnames(oneD_Ep_results) = currencies
-rownames(oneD_Ep_results) = c('p_Daily','Delta_Daily','MSE_Daily', 'p_Weekly','Delta_Weekly','MSE_Weekly')
-
-
-twoD_Ep_results = matrix(nrow = 6, ncol = length(currencies))
-colnames(twoD_Ep_results) = currencies
-rownames(twoD_Ep_results) = c('p_Daily','Delta_Daily','MSE_Daily', 'p_Weekly','Delta_Weekly','MSE_Weekly')
-
-
-for(curr in currencies){ 
-  index = which(daily_lookback_1d_mse[[curr]] == min(daily_lookback_1d_mse[[curr]]), arr.ind=TRUE)
-  oneD_Ep_results['p_Daily',curr] = look_back[index[1,'row']]
-  oneD_Ep_results['Delta_Daily',curr] = delta_grid[index[1,'col']]
-  oneD_Ep_results['MSE_Daily',curr] = min(daily_lookback_1d_mse[[curr]])
-
-  index = which(weekly_lookback_1d_mse[[curr]] == min(weekly_lookback_1d_mse[[curr]]), arr.ind=TRUE)
-  oneD_Ep_results['p_Weekly',curr] = look_back[index[1,'row']]
-  oneD_Ep_results['Delta_Weekly',curr] = delta_grid[index[1,'col']]
-  oneD_Ep_results['MSE_Weekly',curr] = min(weekly_lookback_1d_mse[[curr]])
-
-  index = which(daily_lookback_2d_mse[[curr]] == min(daily_lookback_2d_mse[[curr]]), arr.ind=TRUE)
-  twoD_Ep_results['p_Daily',curr] = look_back[index[1,'row']]
-  twoD_Ep_results['Delta_Daily',curr] = delta_grid[index[1,'col']]
-  twoD_Ep_results['MSE_Daily',curr] = min(daily_lookback_2d_mse[[curr]])
-
-  index = which(weekly_lookback_2d_mse[[curr]] == min(weekly_lookback_2d_mse[[curr]]), arr.ind=TRUE)
-  twoD_Ep_results['p_Weekly',curr] = look_back[index[1,'row']]
-  twoD_Ep_results['Delta_Weekly',curr] = delta_grid[index[1,'col']]
-  twoD_Ep_results['MSE_Weekly',curr] = min(weekly_lookback_2d_mse[[curr]])
-}
-
-```
-
-
-
-Aggregate results
-```{r, tidy = T, warning=F}
-
-setwd("~/Desktop/FIN580/hw3/Plots/AggResults")
-
-name = 'Aggregate Performance of Linear SVM With Daily Volatility '
-plot(daily_1d_cum_mse$Delta, daily_1d_cum_mse$MSE, xlab = 'Delta', ylab = 'MSE', main = name, pch = 21, bg = 'blue')
-index = which.min(daily_1d_cum_mse$MSE)
-points(daily_1d_cum_mse$Delta[index],daily_1d_cum_mse$MSE[index],pch = 21, bg = 'red')
-dev.copy(pdf,paste(name,".pdf",sep=""))
-dev.off()
-
-
-name = 'Aggregate Accuracy of Linear SVM With Daily Volatility '
-plot(daily_1d_cum_acc$Delta, daily_1d_cum_acc$Accuracy, xlab = 'Delta', ylab = 'Accuracy', main = name, pch = 21, bg = 'blue')
-index = which.max(daily_1d_cum_acc$Accuracy)
-points(daily_1d_cum_acc$Delta[index],daily_1d_cum_acc$Accuracy[index],pch = 21, bg = 'red')
-dev.copy(pdf,paste(name,".pdf",sep=""))
-dev.off()
-
-
-name = 'Aggregate Performance of Linear SVM With Weekly Volatility '
-plot(weekly_1d_cum_mse$Delta, weekly_1d_cum_mse$MSE, xlab = 'Delta', ylab = 'MSE', main = name, pch = 21, bg = 'blue')
-index = which.min(weekly_1d_cum_mse$MSE)
-points(weekly_1d_cum_mse$Delta[index],weekly_1d_cum_mse$MSE[index],pch = 21, bg = 'red')
-dev.copy(pdf,paste(name,".pdf",sep=""))
-dev.off()
-
-
-name = 'Aggregate Accuracy of Linear SVM With Weekly Volatility '
-plot(weekly_1d_cum_acc$Delta, weekly_1d_cum_acc$Accuracy, xlab = 'Delta', ylab = 'Accuracy', main = name, pch = 21, bg = 'blue')
-index = which.max(weekly_1d_cum_acc$Accuracy)
-points(weekly_1d_cum_acc$Delta[index],weekly_1d_cum_acc$Accuracy[index],pch = 21, bg = 'red')
-dev.copy(pdf,paste(name,".pdf",sep=""))
-dev.off()
-
-
-name = 'Aggregate Performance of Two-Dimensional SVM With Daily Volatility '
-plot(daily_2d_cum_mse$Delta, daily_2d_cum_mse$MSE, xlab = 'Delta', ylab = 'MSE', main = name, pch = 21, bg = 'blue')
-index = which.min(daily_2d_cum_mse$MSE)
-points(daily_2d_cum_mse$Delta[index],daily_2d_cum_mse$MSE[index],pch = 21, bg = 'red')
-dev.copy(pdf,paste(name,".pdf",sep=""))
-dev.off()
-
-
-name = 'Aggregate Accuracy of Two-Dimensional SVM With Daily Volatility '
-plot(daily_2d_cum_acc$Delta, daily_2d_cum_acc$Accuracy, xlab = 'Delta', ylab = 'Accuracy', main = name, pch = 21, bg = 'blue')
-index = which.max(daily_2d_cum_acc$Accuracy)
-points(daily_2d_cum_acc$Delta[index],daily_2d_cum_acc$Accuracy[index],pch = 21, bg = 'red')
-dev.copy(pdf,paste(name,".pdf",sep=""))
-dev.off()
-
-
-name = 'Aggregate Performance of Two-Dimensional SVM With Weekly Volatility '
-plot(weekly_2d_cum_mse$Delta, weekly_2d_cum_mse$MSE, xlab = 'Delta', ylab = 'MSE', main = name, pch = 21, bg = 'blue')
-index = which.min(weekly_2d_cum_mse$MSE)
-points(weekly_2d_cum_mse$Delta[index],weekly_2d_cum_mse$MSE[index],pch = 21, bg = 'red')
-dev.copy(pdf,paste(name,".pdf",sep=""))
-dev.off()
-
-
-name = 'Aggregate Accuracy of Two-Dimensional SVM With Weekly Volatility '
-plot(weekly_2d_cum_acc$Delta, weekly_2d_cum_acc$Accuracy, xlab = 'Delta', ylab = 'Accuracy', main = name, pch = 21, bg = 'blue')
-index = which.max(weekly_2d_cum_acc$Accuracy)
-points(weekly_2d_cum_acc$Delta[index],weekly_2d_cum_acc$Accuracy[index],pch = 21, bg = 'red')
-dev.copy(pdf,paste(name,".pdf",sep=""))
-dev.off()
-
-
-#########################################################################################################################
-#tables
-
-make_table = function(data){
-  results = matrix(nrow = length(delta_grid), ncol = length(currencies))
-  rownames(results) = delta_grid
-  colnames(results) = currencies
-  for(j in 1:length(currencies)){
-    indicies = which(data$Currency == currencies[j])  
-    for(i in 1:length(delta_grid)){
-     results[i,j] = data$MSE[indicies[i]] 
+run_svm_moving_avg = function(data,kernelType){
+  look_back_p = c(3,5,10)
+  look_back_q = c(0,3,5,10)
+  results = data.frame('Currency' = character(), 'p' = numeric(), 'q' = numeric(), 'C' = numeric(), 'Gamma' = numeric() , 'train_Accuracy' = numeric(), 'test_Accuracy' = numeric(), 'Delta_opt' = numeric(), 'Opt_Train_MSE' = numeric(), 'Opt_Test_Mse' = numeric(),  'Delta' = numeric(), 'train_MSE' = numeric(),'test_MSE' = numeric(), stringsAsFactors = F)
+  
+  pos = 1
+  for(curr in currencies){ 
+    for(p in look_back_p){
+      for(q in look_back_q){
+        
+        if(q == 0){
+          inputs = c('maVol')
+        }
+        else{
+          inputs = c('maVol','maRet')
+        }
+        
+        curr_data = append_moving_avg(data[[curr]],p,q)
+        temp_results = cross_validate_svm(curr_data,inputs,kernelType)
+        results[pos,] = list(curr,p,q,temp_results[1],temp_results[2],temp_results[3],temp_results[4],temp_results[5],temp_results[6],temp_results[7],temp_results[8],temp_results[9],temp_results[10]) 
+    pos = pos + 1
+      }
     }
   }
   return(results) 
 }
 
-table = make_table(daily_1d_results)
-stargazer(table)
-
-table = make_table(weekly_1d_results)
-stargazer(table)
-
-table = make_table(daily_2d_results)
-stargazer(table)
-
-table = make_table(weekly_2d_results)
-stargazer(table)
-
-
-
-best_daily = matrix(nrow = 4, ncol = length(currencies))
-colnames(best_daily) = currencies
-rownames(best_daily) = c('Vol','Vol+Ret','E_p Vol','E_p Vol+E_p Ret')
-
-for(curr in currencies){
-  indicies = which(daily_1d_results$Currency == curr)
-  best_daily[1,curr] = min(daily_1d_results$MSE[indicies])
- 
-  indicies = which(daily_2d_results$Currency == curr)
-  best_daily[2,curr] = min(daily_2d_results$MSE[indicies])
- 
-  best_daily[3,curr] = oneD_Ep_results['MSE_Daily',curr] 
- 
-  best_daily[4,curr] = twoD_Ep_results['MSE_Daily',curr]
-}
-
-stargazer(best_daily)
-
-best_weekly= matrix(nrow = 4, ncol = length(currencies))
-colnames(best_weekly) = currencies
-rownames(best_weekly) = c('Vol','Vol+Ret','E_p Vol','E_p Vol+E_p Ret')
-
-for(curr in currencies){
-  indicies = which(weekly_1d_results$Currency == curr)
-  best_weekly[1,curr] = min(weekly_1d_results$MSE[indicies])
- 
-  indicies = which(weekly_2d_results$Currency == curr)
-  best_weekly[2,curr] = min(weekly_2d_results$MSE[indicies])
- 
-  best_weekly[3,curr] = oneD_Ep_results['MSE_Weekly',curr] 
- 
-  best_weekly[4,curr] = twoD_Ep_results['MSE_Weekly',curr]
-}
-
-
-stargazer(best_weekly)
-
-
-pdf("oneD_results.pdf", height=11, width=30)
-grid.table(oneD_Ep_results)
-dev.off()
-
-pdf("twoD_results.pdf", height=11, width=30)
-grid.table(twoD_Ep_results)
-dev.off()
-
-
-
+daily_ma_results_linear = run_svm_moving_avg(daily_data,'linear')
+daily_ma_results_rbf = run_svm_moving_avg(daily_data,'radial')
+weekly_ma_results_linear = run_svm_moving_avg(weekly_data,'linear')
+weekly_ma_results_rbf = run_svm_moving_avg(weekly_data,'radial')
 
 ```
 
 
+Compile results
+```{r}
+#helper functions
+#get_best_results = function(data){
+  results = data.frame(Currency = character(), train_Accuracy = numeric(), test_Accuracy = numeric(), Train_MSE = numeric(), test_MSE = numeric(), stringsAsFactors = F )
+    pos = 1
+    for(curr in currencies){
+      indicies = which(data$Currency == curr)
+      winner = data[which.max(data$train_Accuracy[indicies]),] #decision criterion, choose p,q that maximize train_Accuracy, issues with constant delta = 0 prevents train_MSE from being good decision
 
+      results[pos,] = list(curr,winner['train_Accuracy'],winner['test_Accuracy'],winner['Opt_Train_MSE'],winner['Opt_Test_Mse'])
+      pos = pos + 1
+    }
+    return(results)
+}
+
+get_best_ma_results = function(data){
+    results = data.frame(Currency = character(), p = numeric(), q = numeric(), train_Accuracy = numeric(), test_Accuracy = numeric(), Train_MSE = numeric(), test_MSE = numeric(), stringsAsFactors = F )
+    pos = 1
+    for(curr in currencies){
+      indicies = which(data$Currency == curr)
+      winner = data[which.max(data$train_Accuracy[indicies]),] #decision criterion, choose p,q that maximize train_Accuracy, issues with constant delta = 0 prevents train_MSE from being good decision
+
+      results[pos,] = list(curr,winner['p'],winner['q'],winner['train_Accuracy'],winner['test_Accuracy'],winner['Opt_Train_MSE'],winner['Opt_Test_Mse'])
+      pos = pos + 1
+    }
+    return(results)
+  }
+
+  
+  #best performers on moving average data
+daily_best_ma_results_linear = get_best_ma_results(daily_ma_results_linear)
+daily_best_ma_results_rbg = get_best_ma_results(daily_ma_results_rbf)
+weekly_best_ma_results_linear = get_best_ma_results(weekly_ma_results_linear)
+weekly_best_ma_results_rbg = get_best_ma_results(weekly_ma_results_rbf)
+
+```
+
+
+Plots and Analysis
+```{r}
+methods = c('y(vol) linear','y(vol) rbf','y(vol,ret) linear','y(vol,ret) rbf', 'y(E_p(vol),E_q(vol)) linear','y(E_p(vol),E_q(vol)) rbf')
+
+
+
+
+daily_results = list(daily_1d_results_linear, daily_1d_results_rbf, daily_2d_results_linear,daily_2d_results_rbf,daily_best_ma_results_linear, daily_best_ma_results_rbg)
+
+weekly_results = list(weekly_1d_results_linear, weekly_1d_results_rbf, weekly_2d_results_linear,weekly_2d_results_rbf,weekly_best_ma_results_linear, weekly_best_ma_results_rbg)
+
+
+#Compilation function
+compile_accuracy = function(data){
+  tr_acc = rep(0,length(data))
+  test_acc = rep(0,length(data))
+  for(i in 1:length(data)){
+    result = data[[i]]
+    for(curr in currencies){
+      index = which(result$Currency == curr)
+      if(i < 5){
+        tr_acc[i] = tr_acc[i] + as.numeric(result[index,'train_Accuracy'])
+        test_acc[i] = test_acc[i] + as.numeric(result[index,'test_Accuracy'])
+      }
+      else{
+        tr_acc[i] = tr_acc[i] + as.numeric(result[index,'train_Accuracy'][[1]])
+        test_acc[i] = test_acc[i] + as.numeric(result[index,'test_Accuracy'][[1]])
+      }
+    }
+    tr_acc[i] = tr_acc[i]/ length(currencies)
+    test_acc[i] = test_acc[i]/ length(currencies)
+  }
+  return(list(tr_acc,test_acc))
+}
+
+
+compile_mse = function(data){
+  tr_mse = rep(0,length(data))
+  test_mse = rep(0,length(data))
+  for(i in 1:length(data)){
+    result = data[[i]]
+    for(curr in currencies){
+      index = which(result$Currency == curr)
+      if(i < 5){
+        tr_mse[i] = tr_mse[i] + as.numeric(result[index,7])
+        test_mse[i] = test_mse[i] + as.numeric(result[index,8])
+      }
+      else{
+        tr_mse[i] = tr_mse[i] + as.numeric(result[index,6][[1]])
+        test_mse[i] = test_mse[i] + as.numeric(result[index,7][[1]])
+      }
+    }
+    tr_mse[i] = tr_mse[i]/ length(currencies)
+    test_mse[i] = test_mse[i]/ length(currencies)
+  }
+  return(list(tr_mse,test_mse))
+  
+}
+
+
+
+#Accuracy Plots
+
+setwd("~/Desktop/FIN580/hw3/Plots/AggResults")
+
+acc_results = compile_accuracy(daily_results)
+daily_tr_acc = acc_results[[1]]
+  daily_test_acc = acc_results[[2]]
+name = 'Aggregate Training Accuracy for Forecasting Daily Vol '
+barplot(daily_tr_acc, main=name, horiz=F, names.arg= methods, cex.names=0.42, xlab = 'Method', ylab = 'Accuracy', col=c("darkblue","red","cyan","orange","magenta", "purple"))
+dev.copy(pdf,paste(name,".pdf",sep=""))
+dev.off()
+
+
+name = 'Aggregate Testing Accuracy for Forecasting Daily Vol '
+barplot(daily_test_acc, main=name, horiz=F, names.arg= methods, cex.names=0.42, xlab = 'Method', ylab = 'Accuracy', col=c("darkblue","red","cyan","orange","magenta", "purple"))
+dev.copy(pdf,paste(name,".pdf",sep=""))
+dev.off()
+
+
+acc_results = compile_accuracy(weekly_results)
+weekly_tr_acc = acc_results[[1]]
+weekly_test_acc = acc_results[[2]]
+name = 'Aggregate Training Accuracy for Forecasting Weekly Vol '
+barplot(weekly_tr_acc, main=name, horiz=F, names.arg= methods, cex.names=0.42, xlab = 'Method', ylab = 'Accuracy', col=c("darkblue","red","cyan","orange","magenta", "purple"))
+dev.copy(pdf,paste(name,".pdf",sep=""))
+dev.off()
+
+
+name = 'Aggregate Testing Accuracy for Forecasting Weekly Vol '
+barplot(weekly_test_acc, main=name, horiz=F, names.arg= methods, cex.names=0.42, xlab = 'Method', ylab = 'Accuracy', col=c("darkblue","red","cyan","orange","magenta", "purple"))
+dev.copy(pdf,paste(name,".pdf",sep=""))
+dev.off()
+
+
+#MSE Plots
+mse_results = compile_mse(daily_results)
+daily_tr_mse = mse_results[[1]]
+daily_test_mse = mse_results[[2]]
+
+name = 'Aggregate Training MSE for Forecasting Daily Vol '
+barplot(daily_tr_mse, main=name, horiz=F, names.arg= methods, cex.names=0.42, xlab = 'Method', ylab = 'Accuracy', col=c("darkblue","red","cyan","orange","magenta", "purple"))
+dev.copy(pdf,paste(name,".pdf",sep=""))
+dev.off()
+
+
+name = 'Aggregate Testing MSE for Forecasting Daily Vol '
+barplot(daily_test_mse, main=name, horiz=F, names.arg= methods, cex.names=0.42, xlab = 'Method', ylab = 'Accuracy', col=c("darkblue","red","cyan","orange","magenta", "purple"))
+dev.copy(pdf,paste(name,".pdf",sep=""))
+dev.off()
+
+mse_results = compile_mse(weekly_results)
+weekly_tr_mse = mse_results[[1]]
+weekly_test_mse = mse_results[[2]]
+
+name = 'Aggregate Training MSE for Forecasting Weekly Vol '
+barplot(weekly_tr_mse, main=name, horiz=F, names.arg= methods, cex.names=0.42, xlab = 'Method', ylab = 'Accuracy', col=c("darkblue","red","cyan","orange","magenta", "purple"))
+dev.copy(pdf,paste(name,".pdf",sep=""))
+dev.off()
+
+name = 'Aggregate Testing MSE for Forecasting Weekly Vol '
+barplot(weekly_test_mse, main=name, horiz=F, names.arg= methods, cex.names=0.42, xlab = 'Method', ylab = 'Accuracy', col=c("darkblue","red","cyan","orange","magenta", "purple"))
+dev.copy(pdf,paste(name,".pdf",sep=""))
+dev.off()
+
+
+
+```
 
 
 
