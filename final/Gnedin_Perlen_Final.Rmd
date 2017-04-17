@@ -20,6 +20,7 @@ library(vars)
 library(stargazer)
 library(fGarch)
 library(orderedLasso)
+library(depmixS4)
 
 #Set seed
 set.seed(1560)
@@ -353,4 +354,9 @@ stargazer(pres_table)
 
 Step 1: Regime switching
 
-We now turn to the regime switching aspect of things.
+We now turn to the regime switching aspect of things. We fit the model on training data.
+```{r,warning=FALSE,tidy=TRUE,message=FALSE}
+hmm_daily=depmix(r)
+
+```
+
