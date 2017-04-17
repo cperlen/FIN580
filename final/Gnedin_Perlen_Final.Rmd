@@ -19,6 +19,7 @@ library(class)
 library(vars)
 library(stargazer)
 library(fGarch)
+library(orderedLasso)
 
 #Set seed
 set.seed(1560)
@@ -259,7 +260,12 @@ weekly_data=lapply(seq(1,length(currencies),1), function(i){
   weekly_data[[i]]=cbind(weekly_data[[i]],S_train)
 })
 
+save(daily_data, file="daily_data_final.RData")
+save(weekly_data, file="weekly_data_final.RData")
 ```
+
+Step 2: Model Fitting
+For model fitting we fit two types of models: GARCH and ordered Lasso. 
 
 For comparison we will fit a GARCH to compare MSE to our regime splitting method. Here we have a generic garch fit model which returns testing error. 
 ```{r,warning=FALSE,tidy=TRUE,message=FALSE}
@@ -267,19 +273,84 @@ For comparison we will fit a GARCH to compare MSE to our regime splitting method
 #And curr_i is the currency index
 #Returns test error
 garch_stats=function(data_type,curr_i){
-  use_data=get(paste(data_type,"_data",sep=""))[[i]]
+  use_data=get(paste(data_type,"_data",sep=""))[[curr_i]]
   train=use_data[which(use_data[,"S_train"]==1),"Ret"]
   test=use_data[which(use_data[,"S_train"]==0),"Vol"]
   model=garchFit(formula=~garch(1,1),data=train,verbose=FALSE)
   pred_y=predict(model,n.ahead=length(test))$standardDeviation
-  return(mse(pred_y),test)
+  #Since we have log-vols, but the predictions arent need to change
+  pred_y=log(pred_y)
+  return(mse(pred_y,test))
 }
 
+#Get stats for using just one garch as a baseline comparison
+mse_garch_all_daily=sapply(seq(1,length(currencies),1), function(x){ garch_stats("daily",x)})
 
+mse_garch_all_weekly=sapply(seq(1,length(currencies),1), function(x){ garch_stats("weekly",x)})
 
-
-
-
-
-
+#Table for presentation - we will overwrite pres_table consistently throughout
+#Tables output into Latex
+pres_table=cbind(mse_garch_all_daily,mse_garch_all_weekly)
+means=c(mean(mse_garch_all_daily),mean(mse_garch_all_weekly))
+pres_table=rbind(pres_table,means)
+colnames(pres_table)=c("Daily","Weekly")
+rownames(pres_table)=c(currencies,"Average")
+stargazer(pres_table)
 ```
+
+
+For comparison we will fit an ordered lasso to compare MSE to our regime splitting method. Here we have a generic ordered lasso fit model which returns testing error. 
+```{r,warning=FALSE,tidy=TRUE,message=FALSE}
+#Data type is "daily" or "weekly"
+#And curr_i is the currency index
+#We use cross validation for parameter selection 
+#Returns test error
+#p is max lag - we will also optimize over this
+lasso_stats=function(data_type,curr_i,p){
+  use_data=get(paste(data_type,"_data",sep=""))[[curr_i]]
+  #Training x and y 
+  train_x=use_data[which(use_data[,"S_train"]==1),"Vol"]
+  train_x=data.matrix(train_x[-length(train_x)])
+  train_y=use_data[which(use_data[,"S_train"]==1),"Vol"]
+  train_y=train_y[-1]
+  #Testing x and y 
+  test_x=use_data[which(use_data[,"S_train"]==0),"Vol"]
+  test_x=data.matrix(test_x[-length(test_x)])
+  test_y=use_data[which(use_data[,"S_train"]==0),"Vol"]
+  test_y=data.matrix(test_y[-1])
+  #Cross validation model - we enforce strong ordering
+  cvmodel=timeLagLasso.cv(train_x,train_y,maxlag=p,strongly.ordered = TRUE,trace=FALSE)
+  lam=cvmodel$lamhat
+  model=timeLagLasso(train_x,train_y,lambda=lam,maxlag=p,strongly.ordered = TRUE,trace=FALSE)
+  pred_y=predict.timeLagLasso(model,test_x)
+  pred_y=pred_y$yhat.ordered[1:length(test_y)]
+  #Since we need to also optimize over p we return testing error and training error
+  return(c(min(cvmodel$cv.err),mse(pred_y,test_y)))
+}
+
+ave_lassos=function(data_type,p){
+  errs=sapply(seq(1,length(currencies),1),function(x){lasso_stats(data_type,x,p)})
+  return(rowMeans(data.matrix(errs)))
+}
+
+lasso_stats("daily",1,3)
+ave_lassos("daily",2)
+
+ps=seq(2,6,1)
+mses_lasso_daily=sapply(ps,function(x){ave_lassos("daily",x)})
+mses_lasso_weekly=sapply(ps,function(x){ave_lassos("weekly",x)})
+
+#Table for presentation - we will overwrite pres_table consistently throughout
+#Tables output into Latex
+i_d=which.min(mses_lasso_daily[1,])
+i_w=which.min(mses_lasso_weekly[1,])
+pres_table=cbind(ps[i_d],ps[i_w])
+pres_table=rbind(pres_table,c(mses_lasso_daily[2,i_d],mses_lasso_weekly[2,i_w]))
+colnames(pres_table)=c("Daily","Weekly")
+rownames(pres_table)=c("Max lag","Out of sample error")
+stargazer(pres_table)
+```
+
+Step 1: Regime switching
+
+We now turn to the regime switching aspect of things.
