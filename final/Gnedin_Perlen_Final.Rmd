@@ -440,13 +440,22 @@ daily_test_regimes_2=list()
 daily_test_regimes_3=list()
 weekly_test_regimes_2=list()
 weekly_test_regimes_3=list()
+#For some reason can only run 4 sets in the 4 loop (hehe bc it's a four loop get it- but actually it breaks down) then you have to run one by one, don't argue with the computer just give in
 for(i in 1:length(currencies)){
-  dai
+  #Daily
+  daily_test_regimes_2[length(daily_test_regimes_2)+1]=data.frame(get_train_regimes("daily",i,2))
+  #  daily_test_regimes_3[length(daily_test_regimes_3)+1]=data.frame(get_train_regimes("daily",i,3))
+    #Weekly
+  #    weekly_test_regimes_2[length(weekly_test_regimes_2)+1]=data.frame(get_train_regimes("weekly",i,2))
+ #   weekly_test_regimes_3[length(weekly_test_regimes_3)+1]=data.frame(get_train_regimes("weekly",i,3))
 }
 
 setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
-save(daily_states,file="Daily_states_train.RData")
-save(weekly_states,file="Weekly_states_train.RData")
+save(daily_test_regimes_2,file="Daily_test_regimes_2.RData")
+save(daily_test_regimes_3,file="Daily_test_regimes_3.RData")
+save(weekly_test_regimes_2,file="Weekly_test_regimes_2.RData")
+save(weekly_test_regimes_3,file="Weekly_test_regimes_3.RData")
+
 
 
 
