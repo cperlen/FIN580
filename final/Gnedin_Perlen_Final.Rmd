@@ -385,30 +385,34 @@ plot_hmm_train=function(i,n_states){
     names=c(names,"Regime 3")
   }
   #Daily
-  hmm=depmix(Vol~1,family=gaussian(),nstates=n_states,data=daily_data[[i]])
+  use_data=daily_data[[curr_i]]
+  data=use_data[which(use_data[,"S_train"]==1),]
+  hmm=depmix(Vol~1,family=gaussian(),nstates=n_states,data=data)
   hmm_fit=fit(hmm,verbose=FALSE)
   post_probs=posterior(hmm_fit)
   daily_states=data.frame(post_probs$state)
-  #pdf(paste(currencies[i],"_TR_daily.pdf",sep=""), onefile=T, paper='A4r')
-  #plot(daily_data[[i]]$Date,post_probs$state, type='s', main='True Regimes - Daily', xlab='', ylab='Regime')
-  #dev.off()
-   # pdf(paste(currencies[i],"_TR_pp_daily.pdf",sep=""), onefile=T, paper='A4r')
-  #matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Daily', ylab='Probability')
-  #legend(x='topright', legend=names, fill=1:n_states, bty='n')
-  #dev.off()
+  pdf(paste(currencies[i],"_TR_daily.pdf",sep=""), onefile=T, paper='A4r')
+  plot(data$Date,post_probs$state, type='s', main='True Regimes - Daily', xlab='', ylab='Regime')
+  dev.off()
+   pdf(paste(currencies[i],"_TR_pp_daily.pdf",sep=""), onefile=T, paper='A4r')
+  matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Daily', ylab='Probability')
+  legend(x='topright', legend=names, fill=1:n_states, bty='n')
+  dev.off()
   
   #Weekly
-  hmm=depmix(Vol~1,family=gaussian(),nstates=n_states,data=weekly_data[[i]])
+  use_data=weekly_data[[curr_i]]
+  data=use_data[which(use_data[,"S_train"]==1),]
+  hmm=depmix(Vol~1,family=gaussian(),nstates=n_states,data=data)
   hmm_fit=fit(hmm,verbose=FALSE)
   post_probs=posterior(hmm_fit)
   weekly_states=data.frame(post_probs$state)
-   # pdf(paste(currencies[i],"_TR_weekly.pdf",sep=""), onefile=T, paper='A4r')
-  #plot(weekly_data[[i]]$Date,post_probs$state, type='s', main='True Regimes - Weekly', xlab='', ylab='Regime')
-  #dev.off()
-   # pdf(paste(currencies[i],"_TR_pp_weekly.pdf",sep=""), onefile=T, paper='A4r')
-  #matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Weekly', ylab='Probability')
-  #legend(x='topright', legend=names, fill=1:n_states, bty='n')
-  #dev.off()
+  pdf(paste(currencies[i],"_TR_weekly.pdf",sep=""), onefile=T, paper='A4r')
+  plot(data$Date,post_probs$state, type='s', main='True Regimes - Weekly', xlab='', ylab='Regime')
+  dev.off()
+   pdf(paste(currencies[i],"_TR_pp_weekly.pdf",sep=""), onefile=T, paper='A4r')
+  matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Weekly', ylab='Probability')
+  legend(x='topright', legend=names, fill=1:n_states, bty='n')
+  dev.off()
   return(list(daily_states,weekly_states))
 }
 
@@ -418,10 +422,12 @@ weekly_states_2=list()
 daily_states_3=list()
 weekly_states_3=list()
 for(i in 1:length(currencies)){
-  daily_states_2[length(daily_states_2)+1]=plot_hmm_train(i,2)[[1]]
-  weekly_states_2[length(weekly_states_2)+1]=plot_hmm_train(i,2)[[2]]
-  daily_states_3[length(daily_states_3)+1]=plot_hmm_train(i,3)[[1]]
-  weekly_states_3[length(weekly_states_3)+1]=plot_hmm_train(i,3)[[2]]
+  temp=plot_hmm_train(i,2)
+  daily_states_2[length(daily_states_2)+1]=temp[[1]]
+  weekly_states_2[length(weekly_states_2)+1]=temp[[2]]
+  temp=plot_hmm_train(i,3)
+  daily_states_3[length(daily_states_3)+1]=temp[[1]]
+  weekly_states_3[length(weekly_states_3)+1]=temp[[2]]
 }
 
 setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
@@ -489,23 +495,36 @@ Model 1: GARCH
 ```{r,warning=FALSE,tidy=TRUE,message=FALSE}
 #All models are actually lists of that model type for each currency
 #Daily
-garch_d_n2_1=list()
-garch_d_n2_2=list()
-garch_d_n3_1=list()
-garch_d_n3_2=list()
-garch_d_n3_2=list()
+garch_daily_n2_1=list()
+garch_daily_n2_2=list()
+garch_daily_n3_1=list()
+garch_daily_n3_2=list()
+garch_daily_n3_2=list()
 #Weekly
-garch_w_n2_1=list()
-garch_w_n2_2=list()
-garch_w_n3_1=list()
-garch_w_n3_2=list()
-garch_w_n3_2=list()
+garch_weekly_n2_1=list()
+garch_weekly_n2_2=list()
+garch_weekly_n3_1=list()
+garch_weekly_n3_2=list()
+garch_weekly_n3_2=list()
 
 #train_garch_curr trains a garch for one currency 
 #data_type is daily / weekly, n_states of number of regimes, reg is the regime number, curr_i is the currency id
 train_garch_curr=function(data_type,n_states,reg,curr_i){
   use_data=get(paste(data_type,"_data",sep=""))[[curr_i]]
-  states=get(paste())
+  use_data=use_data[which(use_data[,"S_train"]==1),]
+  states=get(paste(data_type,"states",n_states,sep="_"))[[i]]
+  use_data=cbind(use_data,states)
+  #State 1 #########
+  #Train state 1
+  train_1=use_data[which(use_data$states==1),]
+  
+  #State 2 #########
+  #Train state 2 
+  train_2=use_data[which(use_data$states==2),]
+  #State 3 #########
+  if(n_states>2){
+    train_3=use_data[which(use_data$states==3),]  
+  }
 }
 
 
