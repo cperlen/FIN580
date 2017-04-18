@@ -261,6 +261,7 @@ weekly_data=lapply(seq(1,length(currencies),1), function(i){
   weekly_data[[i]]=cbind(weekly_data[[i]],S_train)
 })
 
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
 save(daily_data, file="daily_data_final.RData")
 save(weekly_data, file="weekly_data_final.RData")
 ```
@@ -356,7 +357,99 @@ Step 1: Regime switching
 
 We now turn to the regime switching aspect of things. We fit the model on training data.
 ```{r,warning=FALSE,tidy=TRUE,message=FALSE}
-hmm_daily=depmix(r)
+#For outputting purposes we show that the regime model looks like on just the train data
+#Daily
+for(i in 1:length(currencies)){}
+
+#Plots and saves HMM on train data for each currency
+#We also save the states for tarin only for each model so we can build models for them
+
+daily_states=list()
+weekly_states=list()
+plot_hmm_train=function(i,n_states){
+  names=c("Regime 1","Regime 2")
+  if(n_states>2){
+    names=c(names,"Regime 3")
+  }
+  #Daily
+  hmm=depmix(Vol~1,family=gaussian(),nstates=n_states,data=daily_data[[i]])
+  hmm_fit=fit(hmm,verbose=FALSE)
+  post_probs=posterior(hmm_fit)
+  daily_states[length(daily_states)+1]=data.frame(post_probs$state)
+  pdf(paste(currencies[i],"_TR_daily.pdf",sep=""), onefile=T, paper='A4r')
+  plot(daily_data[[i]]$Date,post_probs$state, type='s', main='True Regimes - Daily', xlab='', ylab='Regime')
+  dev.off()
+    pdf(paste(currencies[i],"_TR_pp_daily.pdf",sep=""), onefile=T, paper='A4r')
+  matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Daily', ylab='Probability')
+  legend(x='topright', legend=names, fill=1:n_states, bty='n')
+  dev.off()
+  
+  #Weekly
+  hmm=depmix(Vol~1,family=gaussian(),nstates=n_states,data=weekly_data[[i]])
+  hmm_fit=fit(hmm,verbose=FALSE)
+  post_probs=posterior(hmm_fit)
+  weekly_states[length(weekly_states)+1]=data.frame(post_probs$state)
+    pdf(paste(currencies[i],"_TR_weekly.pdf",sep=""), onefile=T, paper='A4r')
+  plot(weekly_data[[i]]$Date,post_probs$state, type='s', main='True Regimes - Weekly', xlab='', ylab='Regime')
+  dev.off()
+    pdf(paste(currencies[i],"_TR_pp_weekly.pdf",sep=""), onefile=T, paper='A4r')
+  matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Weekly', ylab='Probability')
+  legend(x='topright', legend=names, fill=1:n_states, bty='n')
+  dev.off()
+}
+
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/plots")
+for(i in 1:length(currencies)){
+  plot_hmm_train(i,2)
+  plot_hmm_train(i,3)
+}
+
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
+save(daily_states,file="Daily_states_train.RData")
+save(weekly_states,file="Weekly_states_train.RData")
+
+#There is no real "predict" function - instead we use an expanding window to fit an HMM to all the data including the current test value and then we get the final state
+#end_i is the end of the testing data set where the current point is
+#Since we hope to be able to try both 2 and 3 states, we include n_states as an input for flexibility purposes
+#We assume data is Gaussian
+get_regime=function(use_data,end_i,n_states){
+  #Data getting
+  data=use_data[which(use_data[,"S_train"]==1),]
+  add=use_data[which(use_data[,"S_train"]==0),]
+  add=add[1:end_i,]
+  data=rbind(data,add)
+  #Model fitting
+  hmm=depmix(Vol~1,family=gaussian(),nstates=n_states,data=data)
+  hmm_fit=fit(hmm,verbose=FALSE)
+  post_probs=posterior(hmm_fit)
+  return(post_probs$state[length(post_probs$state)])
+}
+
+#This function run returns a full set of train states for a currencie
+get_train_regimes=function(data_type,curr_i,n_states){
+  use_data=get(paste(data_type,"_data",sep=""))[[curr_i]]
+  train_n=length(use_data[which(use_data[,"S_train"]==0),"Vol"])
+  train_regimes=sapply(seq(1,train_n,1),function(x){
+    print(x)
+    get_regime(use_data,x,n_states)}
+    )
+  return(train_regimes)
+}
+
+daily_test_regimes_2=list()
+daily_test_regimes_3=list()
+weekly_test_regimes_2=list()
+weekly_test_regimes_3=list()
+for(i in 1:length(currencies)){
+  dai
+}
+
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
+save(daily_states,file="Daily_states_train.RData")
+save(weekly_states,file="Weekly_states_train.RData")
+
+
+
 
 ```
 
