@@ -28,12 +28,13 @@ set.seed(1560)
 ```
 ---
   
-Reading in and preprocessing data. Changing Train to be sequential for GARCH modeling.
+Reading in and preprocessing data. Changing Train to be sequential for GARCH modeling. This new data is at the bottom of the this chunk of code - please load the appropriate files.
 ```{r, warning=FALSE,tidy=TRUE, message=FALSE }
 
 #setwd("~/Desktop/FIN580/data")
 setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/data") #Nina's
 load_data_from_scratch = F
+
 
 if(load_data_from_scratch){
   file_names=dir(path="~/Desktop/FIN580/data",pattern = '.csv')
@@ -236,14 +237,13 @@ if(load_data_from_scratch){
   
   
 }
-
 if(!load_data_from_scratch)  {
   load("weekly_data.Rdata")
   load("daily_data.Rdata")
   load("currencies.RData")
 }
 
-#Changing train to sequential 
+#Changing train to sequential ####
 n=nrow(daily_data[[1]])
 new_train=c(rep(1,n*(3/5)),rep(0,n-(n*3/5)+1))
 old_names=colnames(daily_data[[1]])
@@ -264,6 +264,11 @@ weekly_data=lapply(seq(1,length(currencies),1), function(i){
 setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
 save(daily_data, file="daily_data_final.RData")
 save(weekly_data, file="weekly_data_final.RData")
+
+#Final data used - Please load this ###########
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
+load("daily_data_final.RData")
+load("weekly_data_final.RData")
 ```
 
 Step 2: Model Fitting
@@ -355,8 +360,17 @@ stargazer(pres_table)
 
 Step 1: Regime switching
 
-We now turn to the regime switching aspect of things. We fit the model on training data.
+We now turn to the regime switching aspect of things. The following code is VERY time consuming to run - I recommed loaded the already run results located in the data folder. For convenience I put them at the beginning of the code chunk.
 ```{r,warning=FALSE,tidy=TRUE,message=FALSE}
+#Use these unless you want to spend ~4-5 hrs watching code run. 
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
+load("Daily_test_regimes_2.RData")
+load("Daily_test_regimes_3.RData")
+load("Weekly_test_regimes_2.RData")
+load("Weekly_test_regimes_3.RData")
+
+#This is the actual code used to acquire the results
+
 #For outputting purposes we show that the regime model looks like on just the train data
 #Daily
 for(i in 1:length(currencies)){}
@@ -364,8 +378,7 @@ for(i in 1:length(currencies)){}
 #Plots and saves HMM on train data for each currency
 #We also save the states for tarin only for each model so we can build models for them
 
-daily_states=list()
-weekly_states=list()
+
 plot_hmm_train=function(i,n_states){
   names=c("Regime 1","Regime 2")
   if(n_states>2){
@@ -375,38 +388,48 @@ plot_hmm_train=function(i,n_states){
   hmm=depmix(Vol~1,family=gaussian(),nstates=n_states,data=daily_data[[i]])
   hmm_fit=fit(hmm,verbose=FALSE)
   post_probs=posterior(hmm_fit)
-  daily_states[length(daily_states)+1]=data.frame(post_probs$state)
-  pdf(paste(currencies[i],"_TR_daily.pdf",sep=""), onefile=T, paper='A4r')
-  plot(daily_data[[i]]$Date,post_probs$state, type='s', main='True Regimes - Daily', xlab='', ylab='Regime')
-  dev.off()
-    pdf(paste(currencies[i],"_TR_pp_daily.pdf",sep=""), onefile=T, paper='A4r')
-  matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Daily', ylab='Probability')
-  legend(x='topright', legend=names, fill=1:n_states, bty='n')
-  dev.off()
+  daily_states=data.frame(post_probs$state)
+  #pdf(paste(currencies[i],"_TR_daily.pdf",sep=""), onefile=T, paper='A4r')
+  #plot(daily_data[[i]]$Date,post_probs$state, type='s', main='True Regimes - Daily', xlab='', ylab='Regime')
+  #dev.off()
+   # pdf(paste(currencies[i],"_TR_pp_daily.pdf",sep=""), onefile=T, paper='A4r')
+  #matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Daily', ylab='Probability')
+  #legend(x='topright', legend=names, fill=1:n_states, bty='n')
+  #dev.off()
   
   #Weekly
   hmm=depmix(Vol~1,family=gaussian(),nstates=n_states,data=weekly_data[[i]])
   hmm_fit=fit(hmm,verbose=FALSE)
   post_probs=posterior(hmm_fit)
-  weekly_states[length(weekly_states)+1]=data.frame(post_probs$state)
-    pdf(paste(currencies[i],"_TR_weekly.pdf",sep=""), onefile=T, paper='A4r')
-  plot(weekly_data[[i]]$Date,post_probs$state, type='s', main='True Regimes - Weekly', xlab='', ylab='Regime')
-  dev.off()
-    pdf(paste(currencies[i],"_TR_pp_weekly.pdf",sep=""), onefile=T, paper='A4r')
-  matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Weekly', ylab='Probability')
-  legend(x='topright', legend=names, fill=1:n_states, bty='n')
-  dev.off()
+  weekly_states=data.frame(post_probs$state)
+   # pdf(paste(currencies[i],"_TR_weekly.pdf",sep=""), onefile=T, paper='A4r')
+  #plot(weekly_data[[i]]$Date,post_probs$state, type='s', main='True Regimes - Weekly', xlab='', ylab='Regime')
+  #dev.off()
+   # pdf(paste(currencies[i],"_TR_pp_weekly.pdf",sep=""), onefile=T, paper='A4r')
+  #matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Weekly', ylab='Probability')
+  #legend(x='topright', legend=names, fill=1:n_states, bty='n')
+  #dev.off()
+  return(list(daily_states,weekly_states))
 }
 
 setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/plots")
+daily_states_2=list()
+weekly_states_2=list()
+daily_states_3=list()
+weekly_states_3=list()
 for(i in 1:length(currencies)){
-  plot_hmm_train(i,2)
-  plot_hmm_train(i,3)
+  daily_states_2[length(daily_states_2)+1]=plot_hmm_train(i,2)[[1]]
+  weekly_states_2[length(weekly_states_2)+1]=plot_hmm_train(i,2)[[2]]
+  daily_states_3[length(daily_states_3)+1]=plot_hmm_train(i,3)[[1]]
+  weekly_states_3[length(weekly_states_3)+1]=plot_hmm_train(i,3)[[2]]
 }
 
 setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
-save(daily_states,file="Daily_states_train.RData")
-save(weekly_states,file="Weekly_states_train.RData")
+save(daily_states_2,file="Daily_states_train_2.RData")
+save(weekly_states_2,file="Weekly_states_train_2.RData")
+save(daily_states_3,file="Daily_states_train_3.RData")
+save(weekly_states_3,file="Weekly_states_train_3.RData")
+
 
 #There is no real "predict" function - instead we use an expanding window to fit an HMM to all the data including the current test value and then we get the final state
 #end_i is the end of the testing data set where the current point is
@@ -431,6 +454,7 @@ get_train_regimes=function(data_type,curr_i,n_states){
   train_n=length(use_data[which(use_data[,"S_train"]==0),"Vol"])
   train_regimes=sapply(seq(1,train_n,1),function(x){
     print(x)
+    print(currencies[[curr_i]])
     get_regime(use_data,x,n_states)}
     )
   return(train_regimes)
@@ -444,10 +468,10 @@ weekly_test_regimes_3=list()
 for(i in 1:length(currencies)){
   #Daily
   daily_test_regimes_2[length(daily_test_regimes_2)+1]=data.frame(get_train_regimes("daily",i,2))
-  #  daily_test_regimes_3[length(daily_test_regimes_3)+1]=data.frame(get_train_regimes("daily",i,3))
+    daily_test_regimes_3[length(daily_test_regimes_3)+1]=data.frame(get_train_regimes("daily",i,3))
     #Weekly
-  #    weekly_test_regimes_2[length(weekly_test_regimes_2)+1]=data.frame(get_train_regimes("weekly",i,2))
- #   weekly_test_regimes_3[length(weekly_test_regimes_3)+1]=data.frame(get_train_regimes("weekly",i,3))
+    weekly_test_regimes_2[length(weekly_test_regimes_2)+1]=data.frame(get_train_regimes("weekly",i,2))
+    weekly_test_regimes_3[length(weekly_test_regimes_3)+1]=data.frame(get_train_regimes("weekly",i,3))
 }
 
 setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
@@ -455,10 +479,61 @@ save(daily_test_regimes_2,file="Daily_test_regimes_2.RData")
 save(daily_test_regimes_3,file="Daily_test_regimes_3.RData")
 save(weekly_test_regimes_2,file="Weekly_test_regimes_2.RData")
 save(weekly_test_regimes_3,file="Weekly_test_regimes_3.RData")
+```
+
+Step 2: Models by regime. We use the regimes on the training data to fit models on the trading data for each regime. Then we apply the relevant model to the testing data based on the testing regime.
+
+Naming convention for models is as follows: model_d/w_num. of regimes_regime num.
+
+Model 1: GARCH
+```{r,warning=FALSE,tidy=TRUE,message=FALSE}
+#All models are actually lists of that model type for each currency
+#Daily
+garch_d_n2_1=list()
+garch_d_n2_2=list()
+garch_d_n3_1=list()
+garch_d_n3_2=list()
+garch_d_n3_2=list()
+#Weekly
+garch_w_n2_1=list()
+garch_w_n2_2=list()
+garch_w_n3_1=list()
+garch_w_n3_2=list()
+garch_w_n3_2=list()
+
+#train_garch_curr trains a garch for one currency 
+#data_type is daily / weekly, n_states of number of regimes, reg is the regime number, curr_i is the currency id
+train_garch_curr=function(data_type,n_states,reg,curr_i){
+  use_data=get(paste(data_type,"_data",sep=""))[[curr_i]]
+  states=get(paste())
+}
 
 
+garch_stats=function(data_type,curr_i){
+  use_data=get(paste(data_type,"_data",sep=""))[[curr_i]]
+  train=use_data[which(use_data[,"S_train"]==1),"Ret"]
+  test=use_data[which(use_data[,"S_train"]==0),"Vol"]
+  model=garchFit(formula=~garch(1,1),data=train,verbose=FALSE)
+  pred_y=predict(model,n.ahead=length(test))$standardDeviation
+  #Since we have log-vols, but the predictions arent need to change
+  pred_y=log(pred_y)
+  return(mse(pred_y,test))
+}
+
+#Get stats for using just one garch as a baseline comparison
+mse_garch_all_daily=sapply(seq(1,length(currencies),1), function(x){ garch_stats("daily",x)})
+
+mse_garch_all_weekly=sapply(seq(1,length(currencies),1), function(x){ garch_stats("weekly",x)})
+
+#Table for presentation - we will overwrite pres_table consistently throughout
+#Tables output into Latex
+pres_table=cbind(mse_garch_all_daily,mse_garch_all_weekly)
+means=c(mean(mse_garch_all_daily),mean(mse_garch_all_weekly))
+pres_table=rbind(pres_table,means)
+colnames(pres_table)=c("Daily","Weekly")
+rownames(pres_table)=c(currencies,"Average")
+stargazer(pres_table)
 
 
 
 ```
-
