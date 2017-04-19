@@ -356,6 +356,9 @@ pres_table=rbind(pres_table,c(mses_lasso_daily[2,i_d],mses_lasso_weekly[2,i_w]))
 colnames(pres_table)=c("Daily","Weekly")
 rownames(pres_table)=c("Max lag","Out of sample error")
 stargazer(pres_table)
+#For the regime models we will use these ps 
+p_d=ps[i_d]
+p_w=ps[i_w]
 ```
 
 Step 1: Regime switching
@@ -487,6 +490,44 @@ save(daily_test_regimes_2,file="Daily_test_regimes_2.RData")
 save(daily_test_regimes_3,file="Daily_test_regimes_3.RData")
 save(weekly_test_regimes_2,file="Weekly_test_regimes_2.RData")
 save(weekly_test_regimes_3,file="Weekly_test_regimes_3.RData")
+
+#We also output the number of observations for by states by regime
+n_daily=matrix(NA,nrow=3,ncol=2)
+rownames(n_daily)=c("Regime 1","Regime 2","Regime 3")
+colnames(n_daily)=c("No. States: 2","No. States: 3")
+n_weekly=matrix(NA,nrow=3,ncol=2)
+rownames(n_weekly)=c("Regime 1","Regime 2","Regime 3")
+colnames(n_weekly)=c("No. States: 2","No. States: 3")
+for(n in 2:3){
+  for(r in 1:2){
+    name=paste("daily_test_regimes",n,sep="_")
+    temp=get(name)
+    denom=sum(sapply(seq(1,length(currencies),1),function(x){return(length(temp[[x]]))}))
+    n_daily[r,n-1]=sum(sapply(seq(1,length(currencies),1),function(x){return(length(which(temp[[x]]==r)))}))/denom
+    name=paste("weekly_test_regimes",n,sep="_")
+    temp=get(name)
+    denom=sum(sapply(seq(1,length(currencies),1),function(x){return(length(temp[[x]]))}))
+    n_weekly[r,n-1]=sum(sapply(seq(1,length(currencies),1),function(x){return(length(which(temp[[x]]==r)))}))/denom
+  }
+  if(n>2){
+    r=3
+    name=paste("daily_test_regimes",n,sep="_")
+    temp=get(name)
+    denom=sum(sapply(seq(1,length(currencies),1),function(x){return(length(temp[[x]]))}))
+    n_daily[r,n-1]=sum(sapply(seq(1,length(currencies),1),function(x){return(length(which(temp[[x]]==r)))}))/denom
+    name=paste("weekly_test_regimes",n,sep="_")
+    temp=get(name)
+    denom=sum(sapply(seq(1,length(currencies),1),function(x){return(length(temp[[x]]))}))
+    n_weekly[r,n-1]=sum(sapply(seq(1,length(currencies),1),function(x){return(length(which(temp[[x]]==r)))}))/denom
+  }
+}
+
+stargazer(n_daily)
+stargazer(n_weekly)
+
+
+
+
 ```
 
 Step 2: Models by regime. We use the regimes on the training data to fit models on the trading data for each regime. Then we apply the relevant model to the testing data based on the testing regime.
@@ -613,3 +654,153 @@ stargazer(mses_daily)
 stargazer(mses_weekly)
 
 ```
+
+Step 2: Models by regime. We use the regimes on the training data to fit models on the trading data for each regime. Then we apply the relevant model to the testing data based on the testing regime.
+
+Naming convention for models is as follows: model_d/w_num. of regimes_regime num.
+
+Model 2: Ordered lasso
+```{r,warning=FALSE,tidy=TRUE,message=FALSE}
+#All models are actually lists of that model type for each currency
+#Daily
+lasso_daily_2_1=list()
+lasso_daily_2_2=list()
+lasso_daily_3_1=list()
+lasso_daily_3_2=list()
+lasso_daily_3_3=list()
+#Weekly
+lasso_weekly_2_1=list()
+lasso_weekly_2_2=list()
+lasso_weekly_3_1=list()
+lasso_weekly_3_2=list()
+lasso_weekly_3_3=list()
+
+#train_garch_curr trains a garch for one currency for one regime
+#data_type is daily / weekly, n_states of number of regimes, reg is the regime, curr_i is the currency id
+#For p we will use the optimal ps from the all train data
+train_lasso_curr=function(data_type,n_states,reg,curr_i){
+  #Get train first
+  use_data=get(paste(data_type,"_data",sep=""))[[curr_i]]
+  use_data=use_data[which(use_data[,"S_train"]==1),]
+  states=get(paste(data_type,"states",n_states,sep="_"))[[curr_i]]
+  use_data=cbind(use_data,states)
+  train=data.frame(use_data[which(use_data$states==reg),])
+  #Training x and y 
+  train_x=train[,"Vol"]
+  train_x=data.matrix(train_x[-length(train_x)])
+  train_y=train[,"Vol"]
+  train_y=train_y[-1]
+  #We will still cross validate to get the optimal lambda
+  if(data_type=="daily"){
+    p_opt=p_d
+  } 
+  else{
+    p_opt=p_w
+  }
+  cvmodel=timeLagLasso.cv(train_x,train_y,maxlag=p_opt,strongly.ordered = TRUE,trace=FALSE)
+  lam=cvmodel$lamhat
+  model=timeLagLasso(train_x,train_y,lambda=lam,maxlag=p_opt,strongly.ordered = TRUE,trace=FALSE)
+  return(model)
+}
+
+#Function populates all currencies for one list 
+populate_lassos=function(data_type,n_states,reg){
+  name=paste("lasso",data_type,n_states,reg,sep="_")
+  use_list=get(name)
+  for(i in 1:length(currencies)){
+    print(i)
+    use_list[[length(use_list)+1]]=train_lasso_curr(data_type,n_states,reg,i)
+  }
+  assign(name,use_list)
+  return(get(name))
+}
+  
+#Populate all lists
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
+for(n in 2:3){
+    for(r in 1:2){
+    data_type="daily"
+    name=paste("lasso",data_type,n,r,sep="_")
+    use_list=get(name)
+    use_list=populate_lassos(data_type,n,r)
+    assign(name,use_list)
+    temp=get(name)
+    save(temp,file=paste(name,".RData",sep=""))
+    
+    data_type="weekly"
+    name=paste("lasso",data_type,n,r,sep="_")
+    use_list=get(name)
+    use_list=populate_lassos(data_type,n,r)
+    assign(name,use_list)
+    temp=get(name)
+    save(temp,file=paste(name,".RData",sep=""))
+    }
+  if(n>2){
+    r=3
+    data_type="daily"
+      name=paste("lasso",data_type,n,r,sep="_")
+     use_list=get(name)
+     use_list=populate_lassos(data_type,n,r)
+     assign(name,use_list)
+     temp=get(name)
+     save(temp,file=paste(name,".RData",sep=""))
+     
+     data_type="weekly"
+     name=paste("lasso",data_type,n,r,sep="_")
+     use_list=get(name)
+     use_list=populate_lassos(data_type,n,r)
+     assign(name,use_list)
+     temp=get(name)
+     save(temp,file=paste(name,".RData",sep=""))
+  }
+}
+
+#Get testing error - average over all currencies
+get_lasso_test_error=function(data_type,n_states,reg){
+  mse=0
+  for(curr_i in 1:length(currencies)){
+    #Getting data
+    use_data=get(paste(data_type,"_data",sep=""))[[curr_i]]
+    test=use_data[which(use_data[,"S_train"]==0),]
+    states=get(paste(data_type,"test_regimes",n_states,sep="_"))[[curr_i]]
+    test=cbind(test,states)
+    test=test[which(states==reg),]
+    #Testing x and y 
+    test_x=test[,"Vol"]
+    test_x=data.matrix(test_x[-length(test_x)])
+    test_y=test[,"Vol"]
+    test_y=data.matrix(test_y[-1])
+    #Getting model
+    model=get(paste("lasso",data_type,n_states,reg,sep="_"))[[curr_i]]
+    pred_y=predict.timeLagLasso(model,test_x)
+    pred_y=pred_y$yhat.ordered[1:length(test_y)]
+    mse=+mse(pred_y,test_y)
+  }
+  return(mse/7.0)
+}
+
+mses_daily_l=matrix(NA,nrow=3,ncol=2)
+rownames(mses_daily_l)=c("Regime 1","Regime 2","Regime 3")
+colnames(mses_daily_l)=c("No. States: 2","No. States: 3")
+mses_weekly_l=matrix(NA,nrow=3,ncol=2)
+rownames(mses_weekly_l)=c("Regime 1","Regime 2","Regime 3")
+colnames(mses_weekly_l)=c("No. States: 2","No. States: 3")
+for(n in 2:3){
+  for(r in 1:2){
+    print(paste("r:",r,"n:",n))
+    mses_daily_l[r,n-1]=get_lasso_test_error("daily",n,r)
+    mses_weekly_l[r,n-1]=get_lasso_test_error("weekly",n,r)
+  }
+  if(n>2){
+    print(paste("r:",r,"n:",n))
+    r=3
+    mses_daily_l[r,n-1]=get_lasso_test_error("daily",n,r)
+    mses_weekly_l[r,n-1]=get_lasso_test_error("weekly",n,r)
+  }
+}
+
+stargazer(mses_daily_l)
+stargazer(mses_weekly_l)
+
+```
+
