@@ -32,7 +32,7 @@ Reading in and preprocessing data. Changing Train to be sequential for GARCH mod
 ```{r, warning=FALSE,tidy=TRUE, message=FALSE }
 
 #setwd("~/Desktop/FIN580/data")
-setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/data") #Nina's
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data") #Nina's
 load_data_from_scratch = F
 
 
@@ -269,6 +269,8 @@ save(weekly_data, file="weekly_data_final.RData")
 setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
 load("daily_data_final.RData")
 load("weekly_data_final.RData")
+setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/data")
+load("currencies.RData")
 ```
 
 Step 2: Model Fitting
@@ -340,9 +342,6 @@ ave_lassos=function(data_type,p){
   return(rowMeans(data.matrix(errs)))
 }
 
-lasso_stats("daily",1,3)
-ave_lassos("daily",2)
-
 ps=seq(2,6,1)
 mses_lasso_daily=sapply(ps,function(x){ave_lassos("daily",x)})
 mses_lasso_weekly=sapply(ps,function(x){ave_lassos("weekly",x)})
@@ -351,6 +350,7 @@ mses_lasso_weekly=sapply(ps,function(x){ave_lassos("weekly",x)})
 #Tables output into Latex
 i_d=which.min(mses_lasso_daily[1,])
 i_w=which.min(mses_lasso_weekly[1,])
+
 pres_table=cbind(ps[i_d],ps[i_w])
 pres_table=rbind(pres_table,c(mses_lasso_daily[2,i_d],mses_lasso_weekly[2,i_w]))
 colnames(pres_table)=c("Daily","Weekly")
@@ -374,10 +374,6 @@ load("Weekly_test_regimes_3.RData")
 
 #This is the actual code used to acquire the results
 
-#For outputting purposes we show that the regime model looks like on just the train data
-#Daily
-for(i in 1:length(currencies)){}
-
 #Plots and saves HMM on train data for each currency
 #We also save the states for tarin only for each model so we can build models for them
 
@@ -394,10 +390,10 @@ plot_hmm_train=function(curr_i,n_states){
   hmm_fit=fit(hmm,verbose=FALSE)
   post_probs=posterior(hmm_fit)
   daily_states=data.frame(post_probs$state)
-  pdf(paste(currencies[curr_i],"_TR_daily.pdf",sep=""), onefile=T, paper='A4r')
+  pdf(paste(currencies[curr_i],n_states,"_TR_daily.pdf",sep="_"), onefile=T, paper='A4r')
   plot(data$Date,post_probs$state, type='s', main='True Regimes - Daily', xlab='', ylab='Regime')
   dev.off()
-   pdf(paste(currencies[curr_i],"_TR_pp_daily.pdf",sep=""), onefile=T, paper='A4r')
+   pdf(paste(currencies[curr_i],n_states,"_TR_pp_daily.pdf",sep="_"), onefile=T, paper='A4r')
   matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Daily', ylab='Probability')
   legend(x='topright', legend=names, fill=1:n_states, bty='n')
   dev.off()
@@ -409,10 +405,10 @@ plot_hmm_train=function(curr_i,n_states){
   hmm_fit=fit(hmm,verbose=FALSE)
   post_probs=posterior(hmm_fit)
   weekly_states=data.frame(post_probs$state)
-  pdf(paste(currencies[curr_i],"_TR_weekly.pdf",sep=""), onefile=T, paper='A4r')
+  pdf(paste(currencies[curr_i],n_states,"_TR_weekly.pdf",sep="_"), onefile=T, paper='A4r')
   plot(data$Date,post_probs$state, type='s', main='True Regimes - Weekly', xlab='', ylab='Regime')
   dev.off()
-   pdf(paste(currencies[curr_i],"_TR_pp_weekly.pdf",sep=""), onefile=T, paper='A4r')
+   pdf(paste(currencies[curr_i],n_states,"_TR_pp_weekly.pdf",sep="_"), onefile=T, paper='A4r')
   matplot(post_probs[,-1], type='l', main='Regime Posterior Probabilities - Weekly', ylab='Probability')
   legend(x='topright', legend=names, fill=1:n_states, bty='n')
   dev.off()
