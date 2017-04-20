@@ -297,6 +297,8 @@ mse_garch_all_daily=sapply(seq(1,length(currencies),1), function(x){ garch_stats
 
 mse_garch_all_weekly=sapply(seq(1,length(currencies),1), function(x){ garch_stats("weekly",x)})
 
+save(mse_garch_all_daily,file="mse_garch_all_daily.RData")
+save(mse_garch_all_weekly,file="mse_garch_all_weekly.RData")
 #Table for presentation - we will overwrite pres_table consistently throughout
 #Tables output into Latex
 pres_table=cbind(mse_garch_all_daily,mse_garch_all_weekly)
@@ -438,6 +440,12 @@ save(daily_states_3,file="Daily_states_train_3.RData")
 save(weekly_states_3,file="Weekly_states_train_3.RData")
 
 
+
+load("Daily_states_train_2.RData")
+load("Weekly_states_train_2.RData")
+load("Daily_states_train_3.RData")
+load("Weekly_states_train_3.RData")
+
 #There is no real "predict" function - instead we use an expanding window to fit an HMM to all the data including the current test value and then we get the final state
 #end_i is the end of the testing data set where the current point is
 #Since we hope to be able to try both 2 and 3 states, we include n_states as an input for flexibility purposes
@@ -486,6 +494,11 @@ save(daily_test_regimes_2,file="Daily_test_regimes_2.RData")
 save(daily_test_regimes_3,file="Daily_test_regimes_3.RData")
 save(weekly_test_regimes_2,file="Weekly_test_regimes_2.RData")
 save(weekly_test_regimes_3,file="Weekly_test_regimes_3.RData")
+
+load("Daily_test_regimes_2.RData")
+load("Daily_test_regimes_3.RData")
+load("Weekly_test_regimes_2.RData")
+load("Weekly_test_regimes_3.RData")
 
 #We also output the number of observations for by states by regime
 n_daily=matrix(NA,nrow=3,ncol=2)
@@ -573,6 +586,8 @@ populate_garchs=function(data_type,n_states,reg){
   
 #Populate all lists
 setwd("~/Documents/Grad_School/2016-2017_Spring/Amin/Homework/HW_3/FIN580/final/data")
+n=3
+r=2
 for(n in 2:3){
     for(r in 1:2){
     data_type="daily"
@@ -581,7 +596,6 @@ for(n in 2:3){
     use_list=populate_garchs(data_type,n,r)
     assign(name,use_list)
     save(get(name),file=paste(name,".RData",sep=""))
-    
     data_type="weekly"
     name=paste("garch",data_type,n,r,sep="_")
     use_list=get(name)
@@ -592,7 +606,7 @@ for(n in 2:3){
   if(n>2){
     r=3
     data_type="daily"
-      name=paste("garch",data_type,n,r,sep="_")
+    name=paste("garch",data_type,n,r,sep="_")
      use_list=get(name)
      use_list=populate_garchs(data_type,n,r)
      assign(name,use_list)
@@ -606,6 +620,19 @@ for(n in 2:3){
      save(get(name),file=paste(name,".RData",sep=""))
   }
 }
+
+
+load("garch_daily_2_1.RData")
+load("garch_daily_2_2.RData")
+load("garch_daily_3_1.RData")
+load("garch_daily_3_2.RData")
+load("garch_daily_3_3.RData")
+
+load("garch_weekly_2_1.RData")
+load("garch_weekly_2_2.RData")
+load("garch_weekly_3_1.RData")
+load("garch_weekly_3_2.RData")
+load("garch_weekly_3_3.RData")
 
 #Get testing error - average over all currencies
 get_garch_test_error=function(data_type,n_states,reg){
@@ -625,6 +652,8 @@ get_garch_test_error=function(data_type,n_states,reg){
   }
   return(mse/7.0)
 }
+
+
 
 mses_daily=matrix(NA,nrow=3,ncol=2)
 rownames(mses_daily)=c("Regime 1","Regime 2","Regime 3")
@@ -670,6 +699,20 @@ lasso_weekly_2_2=list()
 lasso_weekly_3_1=list()
 lasso_weekly_3_2=list()
 lasso_weekly_3_3=list()
+
+
+
+load("lasso_daily_2_1.RData")
+load("lasso_daily_2_2.RData")
+load("lasso_daily_3_1.RData")
+load("lasso_daily_3_2.RData")
+load("lasso_daily_3_3.RData")
+
+load("lasso_weekly_2_1.RData")
+load("lasso_weekly_2_2.RData")
+load("lasso_weekly_3_1.RData")
+load("lasso_weekly_3_2.RData")
+load("lasso_weekly_3_3.RData")
 
 #train_garch_curr trains a garch for one currency for one regime
 #data_type is daily / weekly, n_states of number of regimes, reg is the regime, curr_i is the currency id
