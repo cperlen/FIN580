@@ -843,3 +843,50 @@ stargazer(mses_weekly_l)
 
 ```
 
+
+#random walk predictor for model comparison 
+
+```{r}
+
+
+rand_walk = function(data){
+  tr_indicies = which(data$S_train == 1)
+  test_indicies = which(data$S_train == 0)
+  
+  tr_mse = rep(0,length(currencies)) 
+  test_mse = rep(0,length(currencies)) 
+  
+  for(curr in 1:length(currencies)){
+    vols = data[[curr]]$Vol
+    next_vol = data[[curr]]$Target
+    in_train = data[[curr]]$S_train
+      
+    num_train = 0
+    num_test = 0
+    for(i in 1:length(vols)){
+      if(in_train[i] == 1){
+        tr_mse[curr] =  tr_mse[curr] + (vols[i] - next_vol[i])^2
+        num_train = num_train + 1
+      }
+      else{
+        test_mse[curr] =  test_mse[curr] + (vols[i] - next_vol[i])^2
+        num_test = num_test + 1
+      }
+    }
+    tr_mse[curr] = tr_mse[curr] / num_train
+    test_mse[curr] = test_mse[curr] / num_test
+  }
+  return(c(mean(tr_mse),mean(test_mse)))
+}
+
+daily_rw = rand_walk(daily_data)
+weekly_rw = rand_walk(weekly_data)
+  
+rw_mse = matrix(nrow = 2, ncol = 2)
+colnames(rw_mse) = c('Train','Test')
+rownames(rw_mse) = c('Daily','Weekly')
+
+rw_mse[1,] = daily_rw
+rw_mse[2,] = weekly_rw
+
+stargazer(rw_mse)
